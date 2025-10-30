@@ -1,7 +1,8 @@
-import { FileAst, FileRoutes, RouteLike } from '../types';
 import traverse from '@babel/traverse';
 
-function evalLiteral(node: any): any {
+import { FileRoutes, FileAst, RouteLike } from '../types';
+
+export const evalLiteral = (node: any): any => {
   switch (node?.type) {
     case 'StringLiteral':
       return node.value;
@@ -18,9 +19,9 @@ function evalLiteral(node: any): any {
     default:
       return undefined;
   }
-}
+};
 
-export function extractRoutes(forest: FileAst[]): { filePath: string; routes: RouteLike[] }[] {
+export const extractRoutes = (forest: FileAst[]): { filePath: string; routes: RouteLike[] }[] => {
   const result: { filePath: string; routes: RouteLike[] }[] = [];
 
   for (const { filePath, ast } of forest) {
@@ -45,7 +46,11 @@ export function extractRoutes(forest: FileAst[]): { filePath: string; routes: Ro
           (path.node.init.type === 'ArrayExpression' || path.node.init.type === 'ObjectExpression')
         ) {
           const val = evalLiteral(path.node.init);
-          Array.isArray(val) ? fileRoutes.push(...val) : fileRoutes.push(val);
+          if (Array.isArray(val)) {
+            fileRoutes.push(...val);
+          } else {
+            fileRoutes.push(val);
+          }
         }
       },
     });
@@ -54,13 +59,11 @@ export function extractRoutes(forest: FileAst[]): { filePath: string; routes: Ro
   }
 
   return result;
-}
+};
 
 export const mergeRouteTrees = (filesRoutes: FileRoutes[]) => {
   // В простейшем случае — просто плоский массив:
-  const flat = filesRoutes.flatMap((x) => x.routes);
-
   // Если у узлов есть { path, children: [...] }, это уже «лес» деревьев.
   // Часто достаточно вернуть массив корней:
-  return flat;
+  return;
 };

@@ -1,5 +1,5 @@
-import { start } from './index';
-start().catch((err) => {
+import { main } from './index';
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

@@ -1,2 +1,2 @@
-import * from './common';
-import * from './routes';
+export { Aliases, Config, Library, Options } from './common';
+export { FileAst, FileRoutes, RouteLike } from './routes';

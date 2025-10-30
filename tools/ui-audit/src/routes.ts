@@ -1,9 +1,11 @@
-import fs from 'node:fs';
-import { handleError } from './utils/errors';
-import * as path from 'node:path';
-import { Config, FileAst } from './types';
-import { parse } from '@babel/parser';
 import { readFileSync } from 'fs';
+import fs from 'node:fs';
+import * as path from 'node:path';
+
+import { parse } from '@babel/parser';
+
+import { Config, FileAst } from './types';
+import { handleError } from './utils/errors';
 import { extractRoutes } from './utils/routes';
 
 export const parseRoutes = () => {

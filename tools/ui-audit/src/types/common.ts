@@ -1,18 +1,18 @@
-type Aliases = {
+export type Aliases = {
   [key: string]: string;
 };
 
-type Library = {
+export type Library = {
   [key: string]: Array<string>;
 };
 
-interface Options {
+export interface Options {
   splitAntIcons: boolean;
   countIcons: boolean;
   stripUrlPrefix: boolean;
 }
 
-interface Config {
+export interface Config {
   projectName: string;
   routerFiles: Array<string>;
   srcRoots: Array<string>;
