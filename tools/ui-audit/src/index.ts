@@ -1,5 +1,7 @@
-import { writeRoutes } from './routes';
+import { parseRoutes } from './routes';
 
-export const start = async () => {
-  await writeRoutes();
-};
+export async function main() {
+  console.log('✅ UI Audit CLI работает (TypeScript версия)!');
+
+  parseRoutes();
+}
