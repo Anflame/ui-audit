@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "ui-audit-dev": "cd ./tools/ui-audit/ && npm run dev",
     "ui-audit": "ui-audit"
   },
   "dependencies": {
@@ -15,9 +16,9 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
-    "@gnivc/ui-audit": "file:./tools/ui-audit",
     "@eslint/js": "^9.36.0",
-    "@types/node": "^24.6.0",
+    "@gnivc/ui-audit": "file:tools/ui-audit",
+    "@types/node": "^24.9.2",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",

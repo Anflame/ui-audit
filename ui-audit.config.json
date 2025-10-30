@@ -1,0 +1,18 @@
+{
+  "projectName": "cm-front",
+  "routerFiles": [
+    "src/AppRouter.ts"
+  ],
+  "srcRoots": ["src"],
+  "aliases": {
+    "@": "src"
+  },
+  "libraries": {
+    "antd": ["antd", "@ant-design/icons"]
+  },
+  "options": {
+    "splitAntIcons": false,
+    "countIcons": true,
+    "stripUrlPrefix": true
+  }
+}

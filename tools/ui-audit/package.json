@@ -1,19 +1,32 @@
 {
   "name": "@gnivc/ui-audit",
   "version": "0.1.0",
-  "type": "module",
-  "bin": {
-    "ui-audit": "dist/cli.js"
-  },
+  "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "ui-audit": "dist/cli.cjs"
+  },
   "scripts": {
-    "build": "tsup src/cli.ts src/index.ts --format esm --dts --sourcemap",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "prepare": "npm run build"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
+    "prettier": "^3.6.2",
     "tsup": "^8.0.0",
     "typescript": "^5.6.0",
-    "@types/node": "^20.0.0"
+    "eslint": "^9.38.0",
+    "@typescript-eslint/parser": "^8.46.2",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.4"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.25.0",
+    "@babel/traverse": "^7.25.0",
+    "debug": "^4.3.7"
   }
 }
