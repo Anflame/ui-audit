@@ -1,55 +1,35 @@
-import { ErrorPage } from "../../ErrorPage";
-import { HomePage } from "../../HomePage";
-import { FAQPage } from "../../FAQPage";
-import { RouteConfig, RoutePath } from "../types";
-import { Feedback } from "../../Feedback";
-import {
-  mainDataConfig,
-  processesConfig,
-  reportsConfig,
-  risksConfig,
-  incidentManagementConfig,
-  dictionaryConfig,
-} from "./routes";
-import { IconShowAll } from "../../common/Icon/IconShowAll";
-import { constantStore } from "../../../stores/constantStore";
-
-const { RESOURCE_NAME } = constantStore;
+import { type RouteConfig, RoutePath } from "../routeConfig.ts";
+import { TestIconsPage } from "../components/TestIconsPage";
+import { TestFAQPage } from "../components/TestFAQPage";
+import { TestFeedbackPage } from "../components/TestFeedBackPage";
+import { TestHomePage } from "../components/TestHomePage";
 
 export const routeConfig: RouteConfig = {
   defaultRoute: RoutePath.HOME_PAGE,
   routes: [
     {
+      title: "Иконки",
       path: RoutePath.ICONS,
-      component: IconShowAll,
+      component: TestIconsPage,
       hidden: true,
     },
     {
+      title: "FAQ",
       path: RoutePath.FAQ,
-      component: FAQPage,
+      component: TestFAQPage,
       hidden: true,
     },
     {
+      title: "Обратная связь",
       path: RoutePath.FEEDBACK,
-      component: Feedback,
+      component: TestFeedbackPage,
       hidden: true,
-      resourceName: RESOURCE_NAME.EXPERIMENTAL,
     },
     {
+      title: "Домашняя страница",
       path: RoutePath.HOME_PAGE,
-      component: HomePage,
+      component: TestHomePage,
       hidden: true,
     },
-    {
-      path: RoutePath.ERROR_PAGE,
-      component: ErrorPage,
-      hidden: true,
-    },
-    { ...mainDataConfig },
-    { ...risksConfig },
-    { ...processesConfig },
-    { ...dictionaryConfig },
-    { ...incidentManagementConfig },
-    { ...reportsConfig },
   ],
 };

@@ -33,6 +33,7 @@
     "@babel/traverse": "^7.25.0",
     "@babel/types": "^7.25.0",
     "debug": "^4.3.7",
+    "exceljs": "^4.4.0",
     "fast-glob": "^3.3.2",
     "fs-extra": "^11.2.0"
   }

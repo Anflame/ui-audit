@@ -8,7 +8,8 @@
     "@": "src"
   },
   "libraries": {
-    "antd": ["antd", "@ant-design/icons"]
+    "antd": ["antd", "@ant-design/icons"],
+    "ksnm-common-ui": ["ksnm-common-ui"]
   },
   "options": {
     "splitAntIcons": false,
