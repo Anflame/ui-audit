@@ -1,25 +1,8 @@
 import traverse from '@babel/traverse';
 
-import { FileRoutes, FileAst, RouteLike } from '../types';
+import { FileAst, RouteLike } from '../types';
 
-export const evalLiteral = (node: any): any => {
-  switch (node?.type) {
-    case 'StringLiteral':
-      return node.value;
-    case 'NumericLiteral':
-      return node.value;
-    case 'BooleanLiteral':
-      return node.value;
-    case 'NullLiteral':
-      return null;
-    case 'ArrayExpression':
-      return node.elements.map(evalLiteral);
-    case 'ObjectExpression':
-      return Object.fromEntries(node.properties.map((p: any) => [p.key.name ?? p.key.value, evalLiteral(p.value)]));
-    default:
-      return undefined;
-  }
-};
+import { evalLiteral } from './routes/eval';
 
 export const extractRoutes = (forest: FileAst[]): { filePath: string; routes: RouteLike[] }[] => {
   const result: { filePath: string; routes: RouteLike[] }[] = [];
@@ -28,17 +11,20 @@ export const extractRoutes = (forest: FileAst[]): { filePath: string; routes: Ro
     const fileRoutes: RouteLike[] = [];
 
     traverse(ast, {
-      // export default [ ... ]  или export default { ... }
       ExportDefaultDeclaration(path) {
         const decl = path.node.declaration;
+        console.log({ decldef: decl });
         if (decl.type === 'ArrayExpression') {
           fileRoutes.push(...evalLiteral(decl));
         } else if (decl.type === 'ObjectExpression') {
           fileRoutes.push(evalLiteral(decl));
         }
       },
-      // const routes = [ ... ]  или  const routes = { ... }; export { routes }
+      Identifier(path) {
+        console.log({ id: path.node.name });
+      },
       VariableDeclarator(path) {
+        console.log({ type: path.node.type });
         if (
           path.node.id.type === 'Identifier' &&
           path.node.id.name === 'routes' &&
@@ -53,17 +39,26 @@ export const extractRoutes = (forest: FileAst[]): { filePath: string; routes: Ro
           }
         }
       },
+      ExportNamedDeclaration(p) {
+        const decl = p.node.declaration;
+        console.log({ decl });
+        if (decl?.type !== 'VariableDeclaration') return;
+        for (const d of decl.declarations) {
+          if (d.id.type !== 'Identifier' || d.id.name !== 'routes' || !d.init) continue;
+          if (d.init.type === 'ArrayExpression') {
+            const arr = evalLiteral(d.init);
+            if (Array.isArray(arr)) fileRoutes.push(...arr);
+          } else if (d.init.type === 'ObjectExpression') {
+            fileRoutes.push(evalLiteral(d.init));
+          }
+        }
+      },
     });
 
     result.push({ filePath, routes: fileRoutes });
   }
 
-  return result;
-};
+  console.log({ result });
 
-export const mergeRouteTrees = (filesRoutes: FileRoutes[]) => {
-  // В простейшем случае — просто плоский массив:
-  // Если у узлов есть { path, children: [...] }, это уже «лес» деревьев.
-  // Часто достаточно вернуть массив корней:
-  return;
+  return result;
 };

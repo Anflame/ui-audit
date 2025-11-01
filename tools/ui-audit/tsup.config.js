@@ -1,5 +1,6 @@
-import { defineConfig } from 'tsup';
 import { builtinModules } from 'node:module';
+
+import { defineConfig } from 'tsup';
 
 const externals = [...builtinModules, /^@babel\//, 'debug'];
 

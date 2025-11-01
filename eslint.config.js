@@ -19,6 +19,5 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
-    ignorePatterns: ["packages/ui-audit/**"],
   },
 ]);
