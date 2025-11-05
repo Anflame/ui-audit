@@ -9,6 +9,7 @@ export const collectImportsAndJsx = (astFile: t.File, file: string): FileScan =>
   const jsxFirstLabels = new Map<string, string>();
 
   traverse(astFile, {
+    // --- обычные импорты
     ImportDeclaration: (path): void => {
       const src = path.node.source.value;
       for (const sp of path.node.specifiers) {
@@ -26,11 +27,28 @@ export const collectImportsAndJsx = (astFile: t.File, file: string): FileScan =>
       }
     },
 
-    JSXOpeningElement: (path2: NodePath<t.JSXOpeningElement>): void => {
-      const name = path2.node.name;
+    // --- ВАЖНО: реэкспорты считаем зависимостями для графа
+    ExportAllDeclaration: (path): void => {
+      const src = path.node.source?.value;
+      if (src) {
+        imports.push({ localName: '__reexport__', importedName: '*', source: src });
+      }
+    },
+    ExportNamedDeclaration: (path): void => {
+      const src = path.node.source?.value;
+      if (src) {
+        // локальные имена не нужны для графа, нам важен сам факт связи файл->src
+        imports.push({ localName: '__reexport__', importedName: undefined, source: src });
+      }
+    },
+
+    // --- JSX
+    JSXOpeningElement: (p: NodePath<t.JSXOpeningElement>): void => {
+      const name = p.node.name;
       let elName = '';
-      if (t.isJSXIdentifier(name)) elName = name.name;
-      else if (t.isJSXMemberExpression(name)) {
+      if (t.isJSXIdentifier(name)) {
+        elName = name.name;
+      } else if (t.isJSXMemberExpression(name)) {
         const left = t.isJSXIdentifier(name.object) ? name.object.name : '';
         const right = t.isJSXIdentifier(name.property) ? name.property.name : '';
         elName = left && right ? `${left}.${right}` : right || left || 'UNKNOWN';
@@ -39,7 +57,7 @@ export const collectImportsAndJsx = (astFile: t.File, file: string): FileScan =>
       jsxElements.push(elName);
 
       if (!jsxFirstLabels.has(elName)) {
-        for (const attr of path2.node.attributes) {
+        for (const attr of p.node.attributes) {
           if (!t.isJSXAttribute(attr) || !attr.name) continue;
           const nm = t.isJSXIdentifier(attr.name) ? attr.name.name : '';
           if (nm !== 'title' && nm !== 'label') continue;

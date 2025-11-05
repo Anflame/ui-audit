@@ -6,7 +6,8 @@ export const COMPONENT_TYPES = {
 } as const;
 export type ComponentType = (typeof COMPONENT_TYPES)[keyof typeof COMPONENT_TYPES];
 
-export const INTRINSIC_HTML = new Set([
+// Явная типизация, чтобы не схлопывалось в Set<never>
+export const INTRINSIC_HTML: Set<string> = new Set<string>([
   'a',
   'abbr',
   'address',
@@ -120,8 +121,17 @@ export const INTRINSIC_HTML = new Set([
   'wbr',
 ]);
 
-export const INTERACTIVE_HTML = new Set(['input', 'select', 'textarea', 'button', 'a', 'option', 'optgroup', 'label']);
+export const INTERACTIVE_HTML: Set<string> = new Set<string>([
+  'input',
+  'select',
+  'textarea',
+  'button',
+  'a',
+  'option',
+  'optgroup',
+  'label',
+]);
 
 export const isInteractiveIntrinsic = (tag: string): boolean => INTERACTIVE_HTML.has(tag);
-export const isCamelCaseComponent = (name: string): boolean => /^[A-Z][A-Za-z0-9]*$/.test(name);
+export const isCamelCaseComponent = (name: string): boolean => /^(?:[A-Z][A-Za-z0-9]*)$/.test(name);
 export const isRelativeModule = (spec: string): boolean => spec.startsWith('./') || spec.startsWith('../');

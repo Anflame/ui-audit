@@ -15,7 +15,6 @@ export const runScan = async (cwd: string = process.cwd()): Promise<Stage1Result
   const parser = new ParserBabel();
   const cfg = await loadConfig(cwd);
 
-  // ВАЖНО: корректная замена backslash -> slash
   const patterns: string[] = cfg.srcRoots.map((r: string) =>
     path.posix.join(r.replace(/\\/g, '/'), '**/*.{ts,tsx,js,jsx}'),
   );
@@ -37,7 +36,7 @@ export const runScan = async (cwd: string = process.cwd()): Promise<Stage1Result
       const ast = parser.parse(code) as t.File;
       scans.push(collectImportsAndJsx(ast, abs));
     } catch {
-      // skip broken files
+      /* skip broken files */
     }
   }
 

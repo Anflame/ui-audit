@@ -12,58 +12,56 @@ export type ClassifiedItem = {
   sourceModule?: string;
   count: number;
   label?: string;
-  componentFile?: string;
+  componentFile?: string; // для обёрток — путь к файлу компонента-обёртки
 };
 
-/**
- * Правило Stage-2:
- * - Нативные теги: включаем ТОЛЬКО интерактивные (input/select/textarea/button/… → LOCAL).
- * - ANTD/KSNM: как есть.
- * - Прочие импортируемые CamelCase (локальные/сторонние): ВКЛЮЧАЕМ как LOCAL (кандидаты на обёртки).
- *   Их мы отфильтруем уже на Stage-3, если это не обёртки.
- * - JSX без импорта и не нативный — пропускаем.
- */
 export const deriveComponentType = (file: string, usage: JsxUsage, cfg: UiAuditConfig): ClassifiedItem | null => {
-  // Нативные
-  if (!usage.import && INTRINSIC_HTML.has(usage.element)) {
-    if (!isInteractiveIntrinsic(usage.element)) return null;
-    return { file, component: usage.element, type: COMPONENT_TYPES.LOCAL, count: usage.count, label: usage.label };
+  // 1) отсекаем неинтерактивные HTML-теги
+  if (!usage.import && INTRINSIC_HTML.has(usage.element) && !isInteractiveIntrinsic(usage.element)) {
+    return null;
   }
 
-  // Импортируемые
-  if (usage.import) {
-    const group = classifyByLibrary(usage.import.source, cfg);
-    if (group === 'antd') {
-      return {
-        file,
-        component: usage.element,
-        type: COMPONENT_TYPES.ANTD,
-        sourceModule: usage.import.source,
-        count: usage.count,
-        label: usage.label,
-      };
-    }
-    if (group === 'ksnm-common-ui') {
-      return {
-        file,
-        component: usage.element,
-        type: COMPONENT_TYPES.KSNM,
-        sourceModule: usage.import.source,
-        count: usage.count,
-        label: usage.label,
-      };
-    }
-    // Прочие импортируемые (локальные/сторонние) — включаем как LOCAL (кандидаты на обёртки)
+  // 2) нативные интринсики (input/button/…)
+  if (!usage.import) {
     return {
       file,
       component: usage.element,
       type: COMPONENT_TYPES.LOCAL,
+      count: usage.count,
+      label: usage.label,
+    };
+  }
+
+  // 3) классификация по библиотеке
+  const group = classifyByLibrary(usage.import.source, cfg);
+  if (group === 'antd') {
+    return {
+      file,
+      component: usage.element,
+      type: COMPONENT_TYPES.ANTD,
+      sourceModule: usage.import.source,
+      count: usage.count,
+      label: usage.label,
+    };
+  }
+  if (group === 'ksnm-common-ui') {
+    return {
+      file,
+      component: usage.element,
+      type: COMPONENT_TYPES.KSNM,
       sourceModule: usage.import.source,
       count: usage.count,
       label: usage.label,
     };
   }
 
-  // Остальное — мимо
-  return null;
+  // 4) всё остальное — local (потом Stage 3 поднимет до ANTD_WRAPPER при необходимости)
+  return {
+    file,
+    component: usage.element,
+    type: COMPONENT_TYPES.LOCAL,
+    sourceModule: usage.import.source,
+    count: usage.count,
+    label: usage.label,
+  };
 };

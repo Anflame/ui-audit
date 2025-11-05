@@ -1,61 +1,103 @@
+// src/utils/resolveModule.ts
 import path from 'node:path';
 
+import { parse } from '@babel/parser';
+import traverse from '@babel/traverse';
+import * as t from '@babel/types';
 import fs from 'fs-extra';
 
 const TRY_EXT = ['.tsx', '.ts', '.jsx', '.js'];
 const TRY_INDEX = ['/index.tsx', '/index.ts', '/index.jsx', '/index.js'];
 
-export type ResolveOptions = {
-  cwd: string;
-  aliases?: Record<string, string>;
-};
+export const resolveImportPath = async (fromFile: string, spec: string): Promise<string | null> => {
+  if (!spec.startsWith('./') && !spec.startsWith('../')) return null;
 
-const applyAlias = (spec: string, opts: ResolveOptions): string | null => {
-  const aliases = opts.aliases ?? {};
-  for (const [key, target] of Object.entries(aliases)) {
-    if (!key) continue;
-    if (spec === key || spec.startsWith(`${key}/`)) {
-      const rest = spec.slice(key.length).replace(/^\//, '');
-      return path.join(opts.cwd, target, rest);
-    }
+  const base = path.resolve(path.dirname(fromFile), spec);
+
+  // 1) уже существующий путь (включая случаи с расширением .ts/.tsx)
+  if (await fs.pathExists(base)) return base;
+
+  // 2) перебор расширений
+  for (const ext of TRY_EXT) {
+    const p = base + ext;
+    if (await fs.pathExists(p)) return p;
   }
+
+  // 3) index.*
+  for (const ix of TRY_INDEX) {
+    const p = base + ix;
+    if (await fs.pathExists(p)) return p;
+  }
+
   return null;
 };
 
-export const resolveImportPath = async (
-  fromFile: string,
-  spec: string,
-  opts: ResolveOptions,
-): Promise<string | null> => {
-  // относительные импорты
-  if (spec.startsWith('./') || spec.startsWith('../')) {
-    const base = path.resolve(path.dirname(fromFile), spec);
-    for (const ext of TRY_EXT) {
-      const p = base + ext;
-      if (await fs.pathExists(p)) return p;
+/** Идём глубоко по баррелям: если в файле только реэкспорты — шагаем дальше. */
+export const resolveModuleDeep = async (fromFile: string, spec: string): Promise<string | null> => {
+  const seen = new Set<string>();
+  let cur = await resolveImportPath(fromFile, spec);
+
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const code = await fs.readFile(cur, 'utf8');
+    const ast = parse(code, {
+      sourceType: 'module',
+      plugins: [
+        'typescript',
+        'jsx',
+        'decorators-legacy',
+        'classProperties',
+        'objectRestSpread',
+        'dynamicImport',
+        'importMeta',
+      ],
+    });
+
+    let onlyReexports = true;
+    let nextSpec: string | null = null;
+
+    traverse(ast, {
+      ImportDeclaration() {
+        onlyReexports = false;
+      },
+      ExportNamedDeclaration(p) {
+        const n = p.node;
+        if (n.source && t.isStringLiteral(n.source)) nextSpec = n.source.value;
+        else onlyReexports = false;
+      },
+      ExportAllDeclaration(p) {
+        const n = p.node;
+        if (n.source && t.isStringLiteral(n.source)) nextSpec = n.source.value;
+      },
+      // Любой «реальный» код — не баррель
+      FunctionDeclaration() {
+        onlyReexports = false;
+      },
+      VariableDeclaration() {
+        onlyReexports = false;
+      },
+      ClassDeclaration() {
+        onlyReexports = false;
+      },
+      JSXElement() {
+        onlyReexports = false;
+      },
+      JSXFragment() {
+        onlyReexports = false;
+      },
+    });
+
+    if (!onlyReexports) return cur;
+
+    if (nextSpec) {
+      const next = await resolveImportPath(cur, nextSpec);
+      if (!next) return cur;
+      cur = next;
+      continue;
     }
-    for (const ix of TRY_INDEX) {
-      const p = base + ix;
-      if (await fs.pathExists(p)) return p;
-    }
-    if (await fs.pathExists(base)) return base;
-    return null;
+
+    return cur;
   }
 
-  // алиасы (@ → src)
-  const aliased = applyAlias(spec, opts);
-  if (aliased) {
-    for (const ext of TRY_EXT) {
-      const p = aliased + ext;
-      if (await fs.pathExists(p)) return p;
-    }
-    for (const ix of TRY_INDEX) {
-      const p = aliased + ix;
-      if (await fs.pathExists(p)) return p;
-    }
-    if (await fs.pathExists(aliased)) return aliased;
-  }
-
-  // внешние пакеты не резолвим на ФС
-  return null;
+  return cur;
 };

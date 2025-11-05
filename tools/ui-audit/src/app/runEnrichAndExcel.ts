@@ -1,3 +1,4 @@
+// src/app/runEnrichAndExcel.ts
 import path from 'node:path';
 
 import fs from 'fs-extra';
@@ -6,7 +7,7 @@ import { COMPONENT_TYPES } from '../domain/constants';
 import { writeExcel, type DetailRow } from '../report/excel';
 import { loadConfig as loadCfg } from '../utils/config';
 
-import { buildPagesIndex } from './collectPages';
+import { buildPagesIndex, type PageInfo } from './collectPages';
 import { buildReverseDeps, findOwningPage } from './depsGraph';
 
 import type { ClassifiedReport } from '../classifiers/aggregate';
@@ -21,25 +22,35 @@ const normSourceLib = (it: ClassifiedItem): 'antd' | 'ksnm-common-ui' | 'local' 
 
 export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
   const cfg = await loadCfg(cwd);
-  const stage1 = path.join(cwd, '.ui-audit', 'tmp', 'stage1-scan.json');
-  const stage3 = path.join(cwd, '.ui-audit', 'tmp', 'classified-final.json');
-  const s1 = (await fs.readJSON(stage1)) as { scans: FileScan[] };
-  const final = (await fs.readJSON(stage3)) as ClassifiedReport;
+  const s1Path = path.join(cwd, '.ui-audit', 'tmp', 'stage1-scan.json');
+  const s3Path = path.join(cwd, '.ui-audit', 'tmp', 'classified-final.json');
 
-  // ВАЖНО: сюда передаём cfg (алиасы + cwd)
-  const deps = await buildReverseDeps(cfg, s1.scans);
+  const s1 = (await fs.readJSON(s1Path)) as { scans: FileScan[] };
+  const final = (await fs.readJSON(s3Path)) as ClassifiedReport;
+
+  const deps = await buildReverseDeps(cwd, s1.scans);
+
+  // строим индекс страниц из routeConfig
   const pages = await buildPagesIndex(cwd, cfg.routerFiles ?? []);
+  // Дополнительно: создаём быстрый поиск страниц по двум ключам
+  const isPage = (file: string): PageInfo | undefined => pages[file];
 
   const details: DetailRow[] = [];
+
   for (const it of final.items) {
     const lib = normSourceLib(it);
+
     let componentFile = '';
     if (it.type === COMPONENT_TYPES.ANTD) componentFile = 'antd';
     else if (it.type === COMPONENT_TYPES.ANTD_WRAPPER) componentFile = it.componentFile ?? 'antd';
     else if (it.type === COMPONENT_TYPES.KSNM) componentFile = 'ksnm-common-ui';
     else componentFile = it.file;
 
-    const owner = findOwningPage(it.file, pages, deps);
+    // 1) прямое попадание файла в индекс страниц (tsx)
+    let owner = isPage(it.file);
+
+    // 2) если нет — ищем через обратные зависимости (поднимемся до barrel/index.ts, который есть в pages)
+    if (!owner) owner = findOwningPage(it.file, pages, deps);
 
     details.push({
       pageTitle: owner?.pageTitle,
