@@ -13,7 +13,4 @@ export interface IParser {
   parse: (code: string) => unknown;
 }
 
-export type Stage1Result = {
-  jsonPath: string;
-  scans: FileScan[];
-};
+export type Stage1Result = { jsonPath: string; scans: FileScan[] };

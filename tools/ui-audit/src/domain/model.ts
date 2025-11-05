@@ -1,6 +1,4 @@
-export type UiAuditLibraries = {
-  [group: string]: string[];
-};
+export type UiAuditLibraries = { [group: string]: string[] };
 
 export interface UiAuditConfig {
   projectName: string;
@@ -21,4 +19,5 @@ export type FileScan = {
   file: string;
   imports: ImportInfo[];
   jsxElements: string[];
+  labelMap?: Record<string, string>; // elementName -> first title/label literal
 };

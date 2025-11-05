@@ -1,15 +1,30 @@
-import path from 'node:path';
+import path7 from 'node:path';
 
 import ExcelJS from 'exceljs';
-import fs from 'fs-extra';
+import fs7 from 'fs-extra';
 
 import type { ClassifiedReport } from '../classifiers/aggregate';
 
-export const writeExcel = async (cwd: string, projectName: string, report: ClassifiedReport): Promise<string> => {
-  const outDir = path.join(cwd, '.ui-audit', 'out');
-  await fs.ensureDir(outDir);
-  const xlsxPath = path.join(outDir, `ui-audit-${projectName}.xlsx`);
+export type DetailRow = {
+  pageTitle?: string;
+  pageFile?: string;
+  route?: string;
+  uiComponent: string;
+  componentFile: string;
+  label?: string;
+  sourceLib: 'antd' | 'ksnm-common-ui' | 'local';
+  type: string;
+};
 
+export const writeExcel = async (
+  cwd: string,
+  projectName: string,
+  report: ClassifiedReport,
+  details: DetailRow[],
+): Promise<string> => {
+  const outDir = path7.join(cwd, '.ui-audit', 'out');
+  await fs7.ensureDir(outDir);
+  const xlsxPath = path7.join(outDir, `ui-audit-${projectName}.xlsx`);
   const wb = new ExcelJS.Workbook();
   const wsSummary = wb.addWorksheet('Сводка');
   const wsDetails = wb.addWorksheet('Детализация');
@@ -21,16 +36,36 @@ export const writeExcel = async (cwd: string, projectName: string, report: Class
     { key: 'count', width: 15 },
   ];
 
-  wsDetails.addRow(['Файл', 'Компонент', 'Тип', 'Источник', 'Кол-во']);
-  for (const it of report.items) {
-    wsDetails.addRow([it.file, it.component, it.type, it.sourceModule ?? '', it.count]);
-  }
+  wsDetails.addRow([
+    'Название страницы',
+    'Файл страницы - Путь к компоненту',
+    'Маршрут',
+    'UI компонент',
+    'Файл компонента',
+    'Лейбл',
+    'Библиотека — источник',
+    'Тип компонента',
+  ]);
+  for (const r of details)
+    wsDetails.addRow([
+      r.pageTitle ?? '',
+      r.pageFile ?? '',
+      r.route ?? '',
+      r.uiComponent,
+      r.componentFile,
+      r.label ?? '',
+      r.sourceLib,
+      r.type,
+    ]);
   wsDetails.columns = [
-    { key: 'file', width: 60 },
-    { key: 'component', width: 30 },
-    { key: 'type', width: 30 },
-    { key: 'source', width: 30 },
-    { key: 'cnt', width: 10 },
+    { width: 30 },
+    { width: 60 },
+    { width: 30 },
+    { width: 30 },
+    { width: 60 },
+    { width: 40 },
+    { width: 25 },
+    { width: 25 },
   ];
 
   await wb.xlsx.writeFile(xlsxPath);

@@ -6,9 +6,10 @@ import type { FileScan, ImportInfo } from '../domain/model';
 export const collectImportsAndJsx = (astFile: t.File, file: string): FileScan => {
   const imports: ImportInfo[] = [];
   const jsxElements: string[] = [];
+  const jsxFirstLabels = new Map<string, string>();
 
   traverse(astFile, {
-    ImportDeclaration: (path: NodePath<t.ImportDeclaration>): void => {
+    ImportDeclaration: (path): void => {
       const src = path.node.source.value;
       for (const sp of path.node.specifiers) {
         if (t.isImportSpecifier(sp)) {
@@ -25,20 +26,36 @@ export const collectImportsAndJsx = (astFile: t.File, file: string): FileScan =>
       }
     },
 
-    JSXOpeningElement: (path: NodePath<t.JSXOpeningElement>): void => {
-      const name = path.node.name;
-      if (t.isJSXIdentifier(name)) {
-        jsxElements.push(name.name);
-        return;
-      }
-      if (t.isJSXMemberExpression(name)) {
+    JSXOpeningElement: (path2: NodePath<t.JSXOpeningElement>): void => {
+      const name = path2.node.name;
+      let elName = '';
+      if (t.isJSXIdentifier(name)) elName = name.name;
+      else if (t.isJSXMemberExpression(name)) {
         const left = t.isJSXIdentifier(name.object) ? name.object.name : '';
         const right = t.isJSXIdentifier(name.property) ? name.property.name : '';
-        const compound = left && right ? `${left}.${right}` : right || left || 'UNKNOWN';
-        jsxElements.push(compound);
+        elName = left && right ? `${left}.${right}` : right || left || 'UNKNOWN';
+      }
+      if (!elName) return;
+      jsxElements.push(elName);
+
+      if (!jsxFirstLabels.has(elName)) {
+        for (const attr of path2.node.attributes) {
+          if (!t.isJSXAttribute(attr) || !attr.name) continue;
+          const nm = t.isJSXIdentifier(attr.name) ? attr.name.name : '';
+          if (nm !== 'title' && nm !== 'label') continue;
+          if (!attr.value) continue;
+          if (t.isStringLiteral(attr.value)) {
+            jsxFirstLabels.set(elName, attr.value.value);
+            break;
+          }
+          if (t.isJSXExpressionContainer(attr.value) && t.isStringLiteral(attr.value.expression)) {
+            jsxFirstLabels.set(elName, attr.value.expression.value);
+            break;
+          }
+        }
       }
     },
   });
 
-  return { file, imports, jsxElements };
+  return { file, imports, jsxElements, labelMap: Object.fromEntries(jsxFirstLabels) };
 };

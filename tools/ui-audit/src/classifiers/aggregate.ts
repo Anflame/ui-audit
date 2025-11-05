@@ -3,11 +3,7 @@ import { COMPONENT_TYPES } from '../domain/constants';
 import type { ClassifiedItem } from './deriveComponentType';
 
 export type Summary = Record<string, number>;
-
-export type ClassifiedReport = {
-  items: ClassifiedItem[];
-  summary: Summary;
-};
+export type ClassifiedReport = { items: ClassifiedItem[]; summary: Summary };
 
 export const aggregate = (items: ClassifiedItem[]): ClassifiedReport => {
   const summary: Summary = {
@@ -16,9 +12,6 @@ export const aggregate = (items: ClassifiedItem[]): ClassifiedReport => {
     [COMPONENT_TYPES.KSNM]: 0,
     [COMPONENT_TYPES.LOCAL]: 0,
   };
-
-  for (const it of items) {
-    summary[it.type] = (summary[it.type] ?? 0) + it.count;
-  }
+  for (const it of items) summary[it.type] = (summary[it.type] ?? 0) + it.count;
   return { items, summary };
 };

@@ -1,6 +1,6 @@
-import { main } from './index';
+import { main as mainUiAudit } from './index';
 
-main().catch((err) => {
+mainUiAudit().catch((err) => {
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });
