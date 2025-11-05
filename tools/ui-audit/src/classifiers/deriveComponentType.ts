@@ -1,4 +1,4 @@
-import { COMPONENT_TYPES } from '../domain/constants';
+import { COMPONENT_TYPES, INTRINSIC_HTML, isInteractiveIntrinsic } from '../domain/constants';
 
 import { classifyByLibrary } from './classifyByLibrary';
 
@@ -15,9 +15,13 @@ export type ClassifiedItem = {
   componentFile?: string;
 };
 
-export const deriveComponentType = (file: string, usage: JsxUsage, cfg: UiAuditConfig): ClassifiedItem => {
-  if (!usage.import)
+export const deriveComponentType = (file: string, usage: JsxUsage, cfg: UiAuditConfig): ClassifiedItem | null => {
+  // Интринсики уже отфильтрованы в mapJsxToImports, но подстрахуемся
+  if (!usage.import && INTRINSIC_HTML.has(usage.element) && !isInteractiveIntrinsic(usage.element)) return null;
+
+  if (!usage.import) {
     return { file, component: usage.element, type: COMPONENT_TYPES.LOCAL, count: usage.count, label: usage.label };
+  }
   const group = classifyByLibrary(usage.import.source, cfg);
   if (group === 'antd')
     return {

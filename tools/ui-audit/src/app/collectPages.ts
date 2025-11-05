@@ -29,10 +29,9 @@ const extractRoutePathMap = async (routeConfigPath: string): Promise<Record<stri
             : undefined;
         if (!key) continue;
         const val = prop.value;
-        if (t6.isTemplateLiteral(val) && val.expressions.length >= 1) {
-          const lastQuasi = val.quasis[val.quasis.length - 1];
-          const suffix = lastQuasi?.value?.cooked ?? '';
-          map[key] = suffix.startsWith('/') ? suffix.slice(1) : suffix;
+        if (t6.isTemplateLiteral(val) && val.quasis.length >= 1) {
+          const cooked = val.quasis.map((q) => q.value.cooked ?? '').join('');
+          map[key] = cooked.startsWith('/') ? cooked.slice(1) : cooked;
         } else if (t6.isStringLiteral(val)) {
           const raw = val.value;
           map[key] = raw.startsWith('/') ? raw.slice(1) : raw;

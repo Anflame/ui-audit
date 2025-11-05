@@ -1,7 +1,7 @@
 {
   "projectName": "cm-front",
   "routerFiles": [
-    "src/AppRouter.ts"
+    "src/test/routeConfig.ts"
   ],
   "srcRoots": ["src"],
   "aliases": {

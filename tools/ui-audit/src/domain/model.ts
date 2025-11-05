@@ -19,5 +19,5 @@ export type FileScan = {
   file: string;
   imports: ImportInfo[];
   jsxElements: string[];
-  labelMap?: Record<string, string>; // elementName -> first title/label literal
+  labelMap?: Record<string, string>;
 };

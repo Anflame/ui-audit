@@ -16,6 +16,8 @@ export type DetailRow = {
   type: string;
 };
 
+const norm = (v: string | undefined | null): string => (v && v.trim() ? v : 'нет');
+
 export const writeExcel = async (
   cwd: string,
   projectName: string,
@@ -48,12 +50,12 @@ export const writeExcel = async (
   ]);
   for (const r of details)
     wsDetails.addRow([
-      r.pageTitle ?? '',
-      r.pageFile ?? '',
-      r.route ?? '',
+      norm(r.pageTitle),
+      norm(r.pageFile),
+      norm(r.route),
       r.uiComponent,
       r.componentFile,
-      r.label ?? '',
+      norm(r.label),
       r.sourceLib,
       r.type,
     ]);

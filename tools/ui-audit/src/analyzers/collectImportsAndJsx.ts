@@ -38,18 +38,23 @@ export const collectImportsAndJsx = (astFile: t.File, file: string): FileScan =>
       if (!elName) return;
       jsxElements.push(elName);
 
+      // Лейбл: берём первый НЕПУСТОЙ title/label для данного elementName
       if (!jsxFirstLabels.has(elName)) {
         for (const attr of path2.node.attributes) {
           if (!t.isJSXAttribute(attr) || !attr.name) continue;
           const nm = t.isJSXIdentifier(attr.name) ? attr.name.name : '';
           if (nm !== 'title' && nm !== 'label') continue;
           if (!attr.value) continue;
-          if (t.isStringLiteral(attr.value)) {
-            jsxFirstLabels.set(elName, attr.value.value);
+          if (t.isStringLiteral(attr.value) && attr.value.value.trim()) {
+            jsxFirstLabels.set(elName, attr.value.value.trim());
             break;
           }
-          if (t.isJSXExpressionContainer(attr.value) && t.isStringLiteral(attr.value.expression)) {
-            jsxFirstLabels.set(elName, attr.value.expression.value);
+          if (
+            t.isJSXExpressionContainer(attr.value) &&
+            t.isStringLiteral(attr.value.expression) &&
+            attr.value.expression.value.trim()
+          ) {
+            jsxFirstLabels.set(elName, attr.value.expression.value.trim());
             break;
           }
         }

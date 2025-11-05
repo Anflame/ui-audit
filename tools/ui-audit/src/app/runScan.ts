@@ -15,10 +15,10 @@ export const runScan = async (cwd: string = process.cwd()): Promise<Stage1Result
   const parser = new ParserBabel();
   const cfg = await loadConfig(cwd);
 
+  // паттерны и игноры без «умных» кавычек/невидимых символов; фикс регэкспа для Windows
   const patterns: string[] = cfg.srcRoots.map((r: string) =>
-    path3.posix.join(r.split('\\').join('/'), '**/*.{ts,tsx,js,jsx}'),
+    path3.posix.join(r.replace(/\\/g, '/'), '**/*.{ts,tsx,js,jsx}'),
   );
-
   const ignore: string[] = [
     '**/node_modules/**',
     '**/dist/**',
