@@ -15,15 +15,13 @@ export const mapJsxToImports = (scan: FileScan): JsxUsage[] => {
   const labelMap: Record<string, string> = scan.labelMap ?? {};
 
   for (const [el, count] of counter.entries()) {
-    // 1) Отсекаем неинтерактивные HTML — они не должны попадать в отчёт
     if (INTRINSIC_HTML.has(el)) {
       if (!isInteractiveIntrinsic(el)) continue; // пропускаем div/span/…
       result.push({ element: el, count, import: null, label: labelMap[el] });
       continue;
     }
 
-    // 2) JSXMemberExpression: маппим по «голове» (Form.Item → Form)
-    const base = el.includes('.') ? el.split('.')[0] : el;
+    const base = el.includes('.') ? el.split('.')[0] : el; // Form.Item → Form
     const im = byLocal.get(base) ?? null;
     result.push({ element: el, count, import: im, label: labelMap[el] });
   }

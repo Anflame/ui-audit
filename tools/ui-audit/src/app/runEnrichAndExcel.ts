@@ -1,10 +1,10 @@
-import path8 from 'node:path';
+import path from 'node:path';
 
-import fs8 from 'fs-extra';
+import fs from 'fs-extra';
 
 import { COMPONENT_TYPES } from '../domain/constants';
 import { writeExcel, type DetailRow } from '../report/excel';
-import { loadConfig as loadCfg3 } from '../utils/config';
+import { loadConfig as loadCfg } from '../utils/config';
 
 import { buildPagesIndex } from './collectPages';
 import { buildReverseDeps, findOwningPage } from './depsGraph';
@@ -20,13 +20,14 @@ const normSourceLib = (it: ClassifiedItem): 'antd' | 'ksnm-common-ui' | 'local' 
 };
 
 export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
-  const cfg = await loadCfg3(cwd);
-  const stage1 = path8.join(cwd, '.ui-audit', 'tmp', 'stage1-scan.json');
-  const stage3 = path8.join(cwd, '.ui-audit', 'tmp', 'classified-final.json');
-  const s1 = (await fs8.readJSON(stage1)) as { scans: FileScan[] };
-  const final = (await fs8.readJSON(stage3)) as ClassifiedReport;
+  const cfg = await loadCfg(cwd);
+  const stage1 = path.join(cwd, '.ui-audit', 'tmp', 'stage1-scan.json');
+  const stage3 = path.join(cwd, '.ui-audit', 'tmp', 'classified-final.json');
+  const s1 = (await fs.readJSON(stage1)) as { scans: FileScan[] };
+  const final = (await fs.readJSON(stage3)) as ClassifiedReport;
 
-  const deps = await buildReverseDeps(cwd, s1.scans);
+  // ВАЖНО: сюда передаём cfg (алиасы + cwd)
+  const deps = await buildReverseDeps(cfg, s1.scans);
   const pages = await buildPagesIndex(cwd, cfg.routerFiles ?? []);
 
   const details: DetailRow[] = [];

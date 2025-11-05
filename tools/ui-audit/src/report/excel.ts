@@ -16,7 +16,7 @@ export type DetailRow = {
   type: string;
 };
 
-const norm = (v: string | undefined | null): string => (v && v.trim() ? v : 'нет');
+const norm = (v: string | undefined | null): string => (v && String(v).trim() ? String(v) : 'нет');
 
 export const writeExcel = async (
   cwd: string,

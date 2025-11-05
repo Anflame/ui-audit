@@ -38,7 +38,6 @@ export const collectImportsAndJsx = (astFile: t.File, file: string): FileScan =>
       if (!elName) return;
       jsxElements.push(elName);
 
-      // Лейбл: берём первый НЕПУСТОЙ title/label для данного elementName
       if (!jsxFirstLabels.has(elName)) {
         for (const attr of path2.node.attributes) {
           if (!t.isJSXAttribute(attr) || !attr.name) continue;

@@ -1,6 +1,6 @@
-import path3 from 'node:path';
+import path from 'node:path';
 
-import * as t4 from '@babel/types';
+import * as t from '@babel/types';
 
 import { FsNode } from '../adapters/fsNode';
 import { ParserBabel } from '../adapters/parserBabel';
@@ -15,9 +15,9 @@ export const runScan = async (cwd: string = process.cwd()): Promise<Stage1Result
   const parser = new ParserBabel();
   const cfg = await loadConfig(cwd);
 
-  // паттерны и игноры без «умных» кавычек/невидимых символов; фикс регэкспа для Windows
+  // ВАЖНО: корректная замена backslash -> slash
   const patterns: string[] = cfg.srcRoots.map((r: string) =>
-    path3.posix.join(r.replace(/\\/g, '/'), '**/*.{ts,tsx,js,jsx}'),
+    path.posix.join(r.replace(/\\/g, '/'), '**/*.{ts,tsx,js,jsx}'),
   );
   const ignore: string[] = [
     '**/node_modules/**',
@@ -34,10 +34,10 @@ export const runScan = async (cwd: string = process.cwd()): Promise<Stage1Result
   for (const abs of files) {
     try {
       const code = await fs.readFile(abs);
-      const ast = parser.parse(code) as t4.File;
+      const ast = parser.parse(code) as t.File;
       scans.push(collectImportsAndJsx(ast, abs));
     } catch {
-      // skip broken files silently
+      // skip broken files
     }
   }
 
@@ -46,15 +46,10 @@ export const runScan = async (cwd: string = process.cwd()): Promise<Stage1Result
   const jsonPath = fs.join(outDir, 'stage1-scan.json');
   await fs.writeJson(jsonPath, { project: cfg.projectName, files: scans.length, scans }, true);
 
-  const totalJsx = scans.reduce((a, s) => a + s.jsxElements.length, 0);
-  const totalImports = scans.reduce((a, s) => a + s.imports.length, 0);
-
   console.log('── UI-Audit / Stage 1');
   console.log(`Проект: ${cfg.projectName}`);
   console.log(`Файлов просканировано: ${scans.length}`);
-  console.log(`Всего импортов: ${totalImports}`);
-  console.log(`Всего JSX-узлов: ${totalJsx}`);
-  console.log(`JSON: ${path3.relative(cfg.cwd, jsonPath)}`);
+  console.log(`JSON: ${path.relative(cfg.cwd, jsonPath)}`);
 
   return { jsonPath, scans };
 };

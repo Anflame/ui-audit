@@ -10,7 +10,8 @@ export const collectImportsSet = (astFile: t2.File): { antdLocals: Set<string>; 
       for (const sp of p.node.specifiers) {
         if (t2.isImportSpecifier(sp) || t2.isImportDefaultSpecifier(sp) || t2.isImportNamespaceSpecifier(sp)) {
           allLocals.add(sp.local.name);
-          if (src === 'antd' || src.startsWith('@ant-design/icons')) antdLocals.add(sp.local.name);
+          if (src === 'antd' || src.startsWith('antd/') || src.startsWith('@ant-design/icons'))
+            antdLocals.add(sp.local.name);
         }
       }
     },

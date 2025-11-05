@@ -120,7 +120,7 @@ export const INTRINSIC_HTML = new Set([
   'wbr',
 ]);
 
-export const INTERACTIVE_HTML = new Set(['input', 'select', 'textarea', 'button', 'a']); // добавил 'a' как потенциально интерактивный
+export const INTERACTIVE_HTML = new Set(['input', 'select', 'textarea', 'button', 'a', 'option', 'optgroup', 'label']);
 
 export const isInteractiveIntrinsic = (tag: string): boolean => INTERACTIVE_HTML.has(tag);
 export const isCamelCaseComponent = (name: string): boolean => /^[A-Z][A-Za-z0-9]*$/.test(name);
