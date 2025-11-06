@@ -6,7 +6,8 @@
   "srcRoots": ["src"],
   "aliases": {
     "@": "src",
-    "@components": "src/components"
+    "@components": "src/components",
+    "@common": "src/components/common"
   },
   "libraries": {
     "antd": ["antd", "@ant-design/icons"],
