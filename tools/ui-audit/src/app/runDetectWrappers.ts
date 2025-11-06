@@ -6,8 +6,15 @@ import fs from 'fs-extra';
 import { ParserBabel } from '../adapters/parserBabel';
 import { collectImportsSet } from '../analyzers/collectImportsSet';
 import { hasAntdJsxUsage } from '../analyzers/hasAntdJsxUsage';
-import { COMPONENT_TYPES, isCamelCaseComponent, isRelativeModule, isInteractiveIntrinsic } from '../domain/constants';
+import { isThinAntWrapper } from '../analyzers/isThinAntWrapper';
+import {
+  COMPONENT_TYPES,
+  isCamelCaseComponent,
+  isRelativeModule,
+  isInteractiveIntrinsic,
+} from '../domain/constants';
 import { resolveModuleDeep } from '../utils/resolveModule';
+import { toPosixPath } from '../utils/normalizePath';
 
 import type { ClassifiedReport } from '../classifiers/aggregate';
 import type { ClassifiedItem } from '../classifiers/deriveComponentType';
@@ -36,19 +43,23 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
       // ГЛУБОКИЙ резолв (баррели/index.ts), чтобы точно дойти до файла компонента
       const resolved = await resolveModuleDeep(it.file, it.sourceModule);
       if (resolved) {
+        const resolvedPosix = toPosixPath(resolved);
         try {
-          const code = await fs.readFile(resolved, 'utf8');
+          const stat = await fs.stat(resolvedPosix);
+          if (!stat.isFile()) throw new Error('resolved path is not a file');
+
+          const code = await fs.readFile(resolvedPosix, 'utf8');
           const ast = parser.parse(code) as unknown as t.File;
           const { antdLocals } = collectImportsSet(ast);
-          if (antdLocals.size > 0 && hasAntdJsxUsage(ast, antdLocals)) {
+          if (antdLocals.size > 0 && hasAntdJsxUsage(ast, antdLocals) && isThinAntWrapper(ast, it.component, antdLocals)) {
             const wrapped: ClassifiedItem = {
               ...it,
               type: COMPONENT_TYPES.ANTD_WRAPPER,
               sourceModule: 'antd',
-              componentFile: resolved,
+              componentFile: resolvedPosix,
             };
             updated.push(wrapped);
-            wrapperFiles.add(resolved);
+            wrapperFiles.add(resolvedPosix);
             continue;
           }
         } catch {
@@ -60,7 +71,13 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   }
 
   // вырезаем прямых «детей antd» внутри самих файлов-обёрток
-  const filtered = updated.filter((x) => !(x.type === COMPONENT_TYPES.ANTD && x.file && wrapperFiles.has(x.file)));
+  const filtered = updated
+    .filter((x) => !(x.type === COMPONENT_TYPES.ANTD && x.file && wrapperFiles.has(x.file)))
+    .filter((x) => {
+      if (x.type !== COMPONENT_TYPES.LOCAL) return true;
+      if (!x.sourceModule) return true;
+      return !isRelativeModule(x.sourceModule);
+    });
 
   const summary: Record<string, number> = {
     [COMPONENT_TYPES.ANTD]: 0,

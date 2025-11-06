@@ -3,6 +3,10 @@ import { TestIconsPage } from "../components/TestIconsPage";
 import { TestFAQPage } from "../components/TestFAQPage";
 import { TestFeedbackPage } from "../components/TestFeedBackPage";
 import { TestHomePage } from "../components/TestHomePage";
+import { dictionaryConfig, nestedDictionaryConfig } from "./dictionaryConfig";
+
+const { entry, routes: dictionaryRoutes } = dictionaryConfig;
+const [firstDictionaryRoute] = dictionaryRoutes;
 
 export const routeConfig: RouteConfig = {
   defaultRoute: RoutePath.HOME_PAGE,
@@ -31,5 +35,15 @@ export const routeConfig: RouteConfig = {
       component: TestHomePage,
       hidden: true,
     },
+    {
+      ...nestedDictionaryConfig,
+    },
+    {
+      ...entry,
+      component: entry.component,
+      routes: [...dictionaryRoutes],
+    },
+    { ...firstDictionaryRoute },
+    ...dictionaryRoutes,
   ],
 };

@@ -6,6 +6,7 @@ import { FsNode } from '../adapters/fsNode';
 import { ParserBabel } from '../adapters/parserBabel';
 import { collectImportsAndJsx } from '../analyzers/collectImportsAndJsx';
 import { loadConfig } from '../utils/config';
+import { toPosixPath } from '../utils/normalizePath';
 
 import type { FileScan } from '../domain/model';
 import type { Stage1Result } from '../domain/ports';
@@ -34,7 +35,8 @@ export const runScan = async (cwd: string = process.cwd()): Promise<Stage1Result
     try {
       const code = await fs.readFile(abs);
       const ast = parser.parse(code) as t.File;
-      scans.push(collectImportsAndJsx(ast, abs));
+      const normalized = toPosixPath(abs);
+      scans.push(collectImportsAndJsx(ast, normalized));
     } catch {
       /* skip broken files */
     }

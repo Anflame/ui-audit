@@ -1,4 +1,10 @@
-import { COMPONENT_TYPES, INTRINSIC_HTML, isInteractiveIntrinsic } from '../domain/constants';
+import {
+  COMPONENT_TYPES,
+  INTRINSIC_HTML,
+  isCamelCaseComponent,
+  isInteractiveIntrinsic,
+  isRelativeModule,
+} from '../domain/constants';
 
 import { classifyByLibrary } from './classifyByLibrary';
 
@@ -55,13 +61,17 @@ export const deriveComponentType = (file: string, usage: JsxUsage, cfg: UiAuditC
     };
   }
 
-  // 4) всё остальное — local (потом Stage 3 поднимет до ANTD_WRAPPER при необходимости)
-  return {
-    file,
-    component: usage.element,
-    type: COMPONENT_TYPES.LOCAL,
-    sourceModule: usage.import.source,
-    count: usage.count,
-    label: usage.label,
-  };
+  if (isRelativeModule(usage.import.source) && isCamelCaseComponent(usage.element)) {
+    return {
+      file,
+      component: usage.element,
+      type: COMPONENT_TYPES.LOCAL,
+      sourceModule: usage.import.source,
+      count: usage.count,
+      label: usage.label,
+    };
+  }
+
+  // Всё остальное — не UI-компоненты (react, react-router и т.д.)
+  return null;
 };
