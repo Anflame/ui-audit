@@ -1,5 +1,7 @@
+import { Form } from "./Form";
+
 const OrganizationCard = () => {
-  return <div></div>;
+  return <Form />;
 };
 
 export default OrganizationCard;

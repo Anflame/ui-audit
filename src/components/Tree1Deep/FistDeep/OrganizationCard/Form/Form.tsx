@@ -8,7 +8,7 @@ const Form = () => {
         type="text"
         title="testTree1Deep.FirstDeep.OrganizationCard.Form.antd"
       />
-      <TestAntWrapped />
+      <TestAntWrapped title="testTree1Deep.FirstDeep.OrganizationCard.Form.antd-wrapped" />
       <input title="testTree1Deep.FirstDeep.OrganizationCard.Form.local" />
     </form>
   );

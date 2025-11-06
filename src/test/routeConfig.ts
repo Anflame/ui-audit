@@ -1,5 +1,5 @@
 import { type RouteConfig, RoutePath } from "../routeConfig.ts";
-import { TestIconsPage } from "../components/TestIconsPage";
+import { TestIconsPage } from "@components/TestIconsPage";
 import { TestFAQPage } from "../components/TestFAQPage";
 import { TestFeedbackPage } from "../components/TestFeedBackPage";
 import { TestHomePage } from "../components/TestHomePage";
