@@ -20,9 +20,31 @@ const classifyExpression = (
   if (t.isParenthesizedExpression(expr)) return classifyExpression(expr.expression, antdLocals);
 
   if (t.isJSXElement(expr)) {
-    return isAntName(expr.openingElement.name, antdLocals)
-      ? { hasAnt: true, hasForeign: false }
-      : { hasAnt: false, hasForeign: true };
+    const baseIsAnt = isAntName(expr.openingElement.name, antdLocals);
+    let hasAnt = baseIsAnt;
+    let hasForeign = false;
+
+    for (const child of expr.children) {
+      if (t.isJSXElement(child)) {
+        const res = classifyExpression(child, antdLocals);
+        hasAnt ||= res.hasAnt;
+        hasForeign ||= res.hasForeign;
+      } else if (t.isJSXExpressionContainer(child)) {
+        const res = classifyExpression(child.expression, antdLocals);
+        hasAnt ||= res.hasAnt;
+        hasForeign ||= res.hasForeign;
+      } else if (t.isJSXText(child)) {
+        if (child.value.trim().length > 0) hasForeign = true;
+      } else if (child) {
+        hasForeign = true;
+      }
+    }
+
+    if (!baseIsAnt && !hasAnt) {
+      hasForeign = true;
+    }
+
+    return { hasAnt, hasForeign };
   }
 
   if (t.isJSXFragment(expr)) {
@@ -82,6 +104,16 @@ const classifyExpression = (
 
   if (t.isIdentifier(expr)) {
     if (expr.name === 'undefined' || expr.name === 'null') return { hasAnt: false, hasForeign: false };
+    if (expr.name === 'children') return { hasAnt: false, hasForeign: false };
+  }
+
+  if (
+    t.isMemberExpression(expr) &&
+    !expr.computed &&
+    t.isIdentifier(expr.property) &&
+    expr.property.name === 'children'
+  ) {
+    return { hasAnt: false, hasForeign: false };
   }
 
   if (t.isNullLiteral(expr) || t.isBooleanLiteral(expr)) return { hasAnt: false, hasForeign: false };
@@ -112,6 +144,67 @@ const evaluateFunctionBody = (
       },
     });
   }
+
+  if (sawForeign) return 'reject';
+  if (sawAnt) return 'wrapper';
+  return 'unknown';
+};
+
+const evaluateClassComponent = (
+  classPath: NodePath<t.ClassDeclaration | t.ClassExpression>,
+  antdLocals: Set<string>,
+): 'wrapper' | 'reject' | 'unknown' => {
+  let sawAnt = false;
+  let sawForeign = false;
+
+  const consider = (expr: t.Expression | t.PrivateName | null | undefined) => {
+    const res = classifyExpression(expr, antdLocals);
+    if (res.hasAnt) sawAnt = true;
+    if (res.hasForeign) sawForeign = true;
+  };
+
+  classPath.traverse({
+    ClassMethod(methodPath) {
+      if (sawForeign || sawAnt) return;
+      if (methodPath.node.kind !== 'method') return;
+      const key = methodPath.node.key;
+      if (!t.isIdentifier(key) || key.name !== 'render') return;
+
+      methodPath.traverse({
+        ReturnStatement(retPath) {
+          if (retPath.getFunctionParent() !== methodPath) return;
+          consider(retPath.node.argument ?? null);
+        },
+      });
+    },
+    // class fields with arrow render = () => <Component />
+    ClassProperty(propPath) {
+      if (sawForeign || sawAnt) return;
+      const key = propPath.node.key;
+      if (!t.isIdentifier(key) || key.name !== 'render') return;
+      const valuePath = propPath.get('value');
+      if (!valuePath || (!valuePath.isArrowFunctionExpression() && !valuePath.isFunctionExpression())) return;
+      const verdict = evaluateFunctionBody(valuePath as NodePath<t.Function | t.ArrowFunctionExpression>, antdLocals);
+      if (verdict === 'wrapper') {
+        sawAnt = true;
+      } else if (verdict === 'reject') {
+        sawForeign = true;
+      }
+    },
+    PropertyDefinition(propPath) {
+      if (sawForeign || sawAnt) return;
+      const key = propPath.node.key;
+      if (!t.isIdentifier(key) || key.name !== 'render') return;
+      const valuePath = propPath.get('value');
+      if (!valuePath || (!valuePath.isArrowFunctionExpression() && !valuePath.isFunctionExpression())) return;
+      const verdict = evaluateFunctionBody(valuePath as NodePath<t.Function | t.ArrowFunctionExpression>, antdLocals);
+      if (verdict === 'wrapper') {
+        sawAnt = true;
+      } else if (verdict === 'reject') {
+        sawForeign = true;
+      }
+    },
+  });
 
   if (sawForeign) return 'reject';
   if (sawAnt) return 'wrapper';
@@ -163,6 +256,18 @@ export const isThinAntWrapper = (
       if (!initPath) return;
       verdict = evaluateInitializer(initPath as NodePath, antdLocals);
     },
+    ClassDeclaration(path) {
+      if (verdict !== 'unknown') return;
+      if (!path.node.id || path.node.id.name !== componentName) return;
+      verdict = evaluateClassComponent(path as NodePath<t.ClassDeclaration>, antdLocals);
+    },
+    ClassExpression(path) {
+      if (verdict !== 'unknown') return;
+      const parent = path.parentPath;
+      if (t.isVariableDeclarator(parent.node) && t.isIdentifier(parent.node.id) && parent.node.id.name === componentName) {
+        verdict = evaluateClassComponent(path as NodePath<t.ClassExpression>, antdLocals);
+      }
+    },
     ExportDefaultDeclaration(path) {
       if (verdict !== 'unknown') return;
       const decl = path.get('declaration');
@@ -172,6 +277,10 @@ export const isThinAntWrapper = (
       }
       if (decl.isFunctionDeclaration() || decl.isArrowFunctionExpression() || decl.isFunctionExpression()) {
         verdict = evaluateFunctionBody(decl as NodePath<t.Function | t.ArrowFunctionExpression>, antdLocals);
+        return;
+      }
+      if (decl.isClassDeclaration() || decl.isClassExpression()) {
+        verdict = evaluateClassComponent(decl as NodePath<t.ClassDeclaration | t.ClassExpression>, antdLocals);
       }
     },
   });
