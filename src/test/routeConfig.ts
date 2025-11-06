@@ -3,6 +3,7 @@ import { TestIconsPage } from "../components/TestIconsPage";
 import { TestFAQPage } from "../components/TestFAQPage";
 import { TestFeedbackPage } from "../components/TestFeedBackPage";
 import { TestHomePage } from "../components/TestHomePage";
+import { dictionaryConfig } from "./dictionaryConfig.ts";
 
 export const routeConfig: RouteConfig = {
   defaultRoute: RoutePath.HOME_PAGE,
@@ -31,5 +32,6 @@ export const routeConfig: RouteConfig = {
       component: TestHomePage,
       hidden: true,
     },
+    { ...dictionaryConfig },
   ],
 };
