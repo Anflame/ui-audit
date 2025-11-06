@@ -12,6 +12,8 @@ export const RoutePath = {
   FEEDBACK: `${prefixRouteUrl}feedback`,
   FAQ: `${prefixRouteUrl}faq`,
   ICONS: `${prefixRouteUrl}iconsShowAll`,
+  DICTIONARY_REPORT: `${prefixRouteUrl}dictionary/report`,
+  ORGANIZATION_CARD: `${prefixRouteUrl}organizations/card`,
 } as const;
 
 type Keys = keyof typeof RoutePath;
@@ -24,7 +26,7 @@ export interface Route {
   routes?: Route[];
   redirectTo?: RouteValue;
   link?: boolean;
-  resourceName?: string;
+  resourceName?: string | string[];
 }
 
 export interface RouteConfig {

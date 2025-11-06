@@ -23,7 +23,18 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "@src/*": ["src/*"],
+      "@utils": ["src/utils"],
+      "@stores/*": ["src/stores/*"],
+      "@common/*": ["src/components/common/*"],
+      "@common": ["src/components/common"],
+      "@components/*": ["src/components/*"],
+      "@form/*": ["src/components/common/form/*"],
+      "@finalForm": ["src/components/common/finalForm"],
+      "@finalForm/*": ["src/components/common/finalForm/*"]
+    }
   },
   "include": ["src"]
 }

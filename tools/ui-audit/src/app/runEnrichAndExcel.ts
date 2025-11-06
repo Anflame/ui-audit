@@ -1,4 +1,3 @@
-// src/app/runEnrichAndExcel.ts
 import path from 'node:path';
 
 import fs from 'fs-extra';

@@ -1,5 +1,5 @@
-import { resolveAliasImportPath, resolveImportPath } from '../utils/resolveModule';
 import { toPosixOrNull, toPosixPath } from '../utils/normalizePath';
+import { resolveAliasImportPath, resolveImportPath } from '../utils/resolveModule';
 
 import type { PageInfo } from './collectPages';
 import type { FileScan } from '../domain/model';

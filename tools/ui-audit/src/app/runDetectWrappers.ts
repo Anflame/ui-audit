@@ -7,14 +7,9 @@ import { ParserBabel } from '../adapters/parserBabel';
 import { collectImportsSet } from '../analyzers/collectImportsSet';
 import { hasAntdJsxUsage } from '../analyzers/hasAntdJsxUsage';
 import { isThinAntWrapper } from '../analyzers/isThinAntWrapper';
-import {
-  COMPONENT_TYPES,
-  isCamelCaseComponent,
-  isRelativeModule,
-  isInteractiveIntrinsic,
-} from '../domain/constants';
-import { resolveModuleDeep } from '../utils/resolveModule';
+import { COMPONENT_TYPES, isCamelCaseComponent, isRelativeModule, isInteractiveIntrinsic } from '../domain/constants';
 import { toPosixPath } from '../utils/normalizePath';
+import { resolveModuleDeep } from '../utils/resolveModule';
 
 import type { ClassifiedReport } from '../classifiers/aggregate';
 import type { ClassifiedItem } from '../classifiers/deriveComponentType';
@@ -29,7 +24,6 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   const wrapperFiles = new Set<string>();
 
   for (const it of report.items) {
-    // Пропускаем неинтерактивные HTML
     if (!it.sourceModule && !/[A-Z]/.test(it.component)) {
       if (!isInteractiveIntrinsic(it.component)) continue;
     }
@@ -40,7 +34,6 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
       isCamelCaseComponent(it.component) &&
       isRelativeModule(it.sourceModule)
     ) {
-      // ГЛУБОКИЙ резолв (баррели/index.ts), чтобы точно дойти до файла компонента
       const resolved = await resolveModuleDeep(it.file, it.sourceModule);
       if (resolved) {
         const resolvedPosix = toPosixPath(resolved);
@@ -51,7 +44,11 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
           const code = await fs.readFile(resolvedPosix, 'utf8');
           const ast = parser.parse(code) as unknown as t.File;
           const { antdLocals } = collectImportsSet(ast);
-          if (antdLocals.size > 0 && hasAntdJsxUsage(ast, antdLocals) && isThinAntWrapper(ast, it.component, antdLocals)) {
+          if (
+            antdLocals.size > 0 &&
+            hasAntdJsxUsage(ast, antdLocals) &&
+            isThinAntWrapper(ast, it.component, antdLocals)
+          ) {
             const wrapped: ClassifiedItem = {
               ...it,
               type: COMPONENT_TYPES.ANTD_WRAPPER,
@@ -62,15 +59,12 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
             wrapperFiles.add(resolvedPosix);
             continue;
           }
-        } catch {
-          // оставляем как есть
-        }
+        } catch {}
       }
     }
     updated.push(it);
   }
 
-  // вырезаем прямых «детей antd» внутри самих файлов-обёрток
   const filtered = updated
     .filter((x) => !(x.type === COMPONENT_TYPES.ANTD && x.file && wrapperFiles.has(x.file)))
     .filter((x) => {
