@@ -12,6 +12,7 @@ import {
   resolveImportPath,
   resolveModuleDeep,
 } from '../utils/resolveModule';
+import { toPosixOrNull, toPosixPath } from '../utils/normalizePath';
 
 export type PageInfo = {
   pageTitle?: string;
@@ -85,8 +86,9 @@ export const collectPagesFromRouter = async (
   aliases: AliasMap,
 ): Promise<Record<string, PageInfo>> => {
   const parser = new ParserBabel();
-  const abs = path.isAbsolute(routerFile) ? routerFile : path.join(cwd, routerFile);
-  const code = await fs.readFile(abs, 'utf8');
+  const absRaw = path.isAbsolute(routerFile) ? routerFile : path.join(cwd, routerFile);
+  const abs = toPosixPath(absRaw);
+  const code = await fs.readFile(absRaw, 'utf8');
   const ast = parser.parse(code) as unknown as t.File;
 
   // local importName -> spec
@@ -165,7 +167,8 @@ export const collectPagesFromRouter = async (
     const deepRelative = shallowRelative ? await resolveModuleDeep(abs, spec) : null;
     const deepAlias = !deepRelative && shallowAlias ? await resolveAliasModuleDeep(cwd, aliases, spec) : null;
 
-    const target = deepRelative ?? deepAlias ?? shallowAlias ?? shallowRelative;
+    const targetRaw = deepRelative ?? deepAlias ?? shallowAlias ?? shallowRelative;
+    const target = toPosixOrNull(targetRaw);
     if (!target) continue;
 
     const info: PageInfo = {
@@ -176,8 +179,10 @@ export const collectPagesFromRouter = async (
     };
 
     pages[target] = info;
-    if (shallowRelative && shallowRelative !== target) pages[shallowRelative] = info;
-    if (shallowAlias && shallowAlias !== target) pages[shallowAlias] = info;
+    const shallowRelPosix = toPosixOrNull(shallowRelative);
+    const shallowAliasPosix = toPosixOrNull(shallowAlias);
+    if (shallowRelPosix && shallowRelPosix !== target) pages[shallowRelPosix] = info;
+    if (shallowAliasPosix && shallowAliasPosix !== target) pages[shallowAliasPosix] = info;
   }
 
   return pages;

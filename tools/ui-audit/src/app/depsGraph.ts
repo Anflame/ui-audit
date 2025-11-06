@@ -1,4 +1,5 @@
 import { resolveAliasImportPath, resolveImportPath } from '../utils/resolveModule';
+import { toPosixOrNull, toPosixPath } from '../utils/normalizePath';
 
 import type { PageInfo } from './collectPages';
 import type { FileScan } from '../domain/model';
@@ -14,22 +15,24 @@ export const buildReverseDeps = async (
   const childrenOf = new Map<string, Set<string>>();
 
   for (const s of scans) {
+    const parentFile = toPosixPath(s.file);
     for (const im of s.imports) {
       let child: string | null = null;
 
       if (im.source.startsWith('./') || im.source.startsWith('../')) {
-        child = await resolveImportPath(s.file, im.source);
+        child = await resolveImportPath(parentFile, im.source);
       } else {
         child = await resolveAliasImportPath(cwd, aliases, im.source);
       }
 
-      if (!child) continue;
+      const childPosix = toPosixOrNull(child);
+      if (!childPosix) continue;
 
-      if (!parentsOf.has(child)) parentsOf.set(child, new Set());
-      parentsOf.get(child)!.add(s.file);
+      if (!parentsOf.has(childPosix)) parentsOf.set(childPosix, new Set());
+      parentsOf.get(childPosix)!.add(parentFile);
 
-      if (!childrenOf.has(s.file)) childrenOf.set(s.file, new Set());
-      childrenOf.get(s.file)!.add(child);
+      if (!childrenOf.has(parentFile)) childrenOf.set(parentFile, new Set());
+      childrenOf.get(parentFile)!.add(childPosix);
     }
   }
 
@@ -37,8 +40,9 @@ export const buildReverseDeps = async (
 };
 
 export const findOwningPage = (file: string, pages: Record<string, PageInfo>, deps: Deps): PageInfo | undefined => {
+  const start = toPosixPath(file);
   const visited = new Set<string>();
-  const q: string[] = [file];
+  const q: string[] = [start];
 
   while (q.length) {
     const cur = q.shift()!;

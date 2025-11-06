@@ -14,6 +14,7 @@ import {
   isInteractiveIntrinsic,
 } from '../domain/constants';
 import { resolveModuleDeep } from '../utils/resolveModule';
+import { toPosixPath } from '../utils/normalizePath';
 
 import type { ClassifiedReport } from '../classifiers/aggregate';
 import type { ClassifiedItem } from '../classifiers/deriveComponentType';
@@ -42,11 +43,12 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
       // ГЛУБОКИЙ резолв (баррели/index.ts), чтобы точно дойти до файла компонента
       const resolved = await resolveModuleDeep(it.file, it.sourceModule);
       if (resolved) {
+        const resolvedPosix = toPosixPath(resolved);
         try {
-          const stat = await fs.stat(resolved);
+          const stat = await fs.stat(resolvedPosix);
           if (!stat.isFile()) throw new Error('resolved path is not a file');
 
-          const code = await fs.readFile(resolved, 'utf8');
+          const code = await fs.readFile(resolvedPosix, 'utf8');
           const ast = parser.parse(code) as unknown as t.File;
           const { antdLocals } = collectImportsSet(ast);
           if (antdLocals.size > 0 && hasAntdJsxUsage(ast, antdLocals) && isThinAntWrapper(ast, it.component, antdLocals)) {
@@ -54,10 +56,10 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
               ...it,
               type: COMPONENT_TYPES.ANTD_WRAPPER,
               sourceModule: 'antd',
-              componentFile: resolved,
+              componentFile: resolvedPosix,
             };
             updated.push(wrapped);
-            wrapperFiles.add(resolved);
+            wrapperFiles.add(resolvedPosix);
             continue;
           }
         } catch {

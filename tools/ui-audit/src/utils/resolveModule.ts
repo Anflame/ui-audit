@@ -6,6 +6,8 @@ import traverse from '@babel/traverse';
 import * as t from '@babel/types';
 import fs from 'fs-extra';
 
+import { toPosixPath } from './normalizePath';
+
 const TRY_EXT = ['.tsx', '.ts', '.jsx', '.js'];
 const TRY_INDEX = ['/index.tsx', '/index.ts', '/index.jsx', '/index.js'];
 
@@ -21,16 +23,16 @@ const ensureFile = async (candidate: string): Promise<string | null> => {
 
 const resolveFromBase = async (base: string): Promise<string | null> => {
   const direct = await ensureFile(base);
-  if (direct) return direct;
+  if (direct) return toPosixPath(direct);
 
   for (const ext of TRY_EXT) {
     const candidate = await ensureFile(base + ext);
-    if (candidate) return candidate;
+    if (candidate) return toPosixPath(candidate);
   }
 
   for (const ix of TRY_INDEX) {
     const candidate = await ensureFile(base + ix);
-    if (candidate) return candidate;
+    if (candidate) return toPosixPath(candidate);
   }
 
   return null;
