@@ -28,10 +28,10 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
   const s1 = (await fs.readJSON(s1Path)) as { scans: FileScan[] };
   const final = (await fs.readJSON(s3Path)) as ClassifiedReport;
 
-  const deps = await buildReverseDeps(cwd, s1.scans);
+  const deps = await buildReverseDeps(cwd, s1.scans, cfg.aliases);
 
   // строим индекс страниц из routeConfig
-  const pages = await buildPagesIndex(cwd, cfg.routerFiles ?? []);
+  const pages = await buildPagesIndex(cwd, cfg.routerFiles ?? [], cfg.aliases);
   // Дополнительно: создаём быстрый поиск страниц по двум ключам
   const isPage = (file: string): PageInfo | undefined => pages[file];
 

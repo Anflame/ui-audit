@@ -129,7 +129,6 @@ export const INTERACTIVE_HTML: Set<string> = new Set<string>([
   'a',
   'option',
   'optgroup',
-  'label',
 ]);
 
 export const isInteractiveIntrinsic = (tag: string): boolean => INTERACTIVE_HTML.has(tag);

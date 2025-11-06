@@ -1,25 +1,38 @@
-import { resolveImportPath } from '../utils/resolveModule';
+import { resolveAliasImportPath, resolveImportPath } from '../utils/resolveModule';
+import { toPosixOrNull, toPosixPath } from '../utils/normalizePath';
 
 import type { PageInfo } from './collectPages';
 import type { FileScan } from '../domain/model';
 
 export type Deps = { parentsOf: Map<string, Set<string>>; childrenOf: Map<string, Set<string>> };
 
-export const buildReverseDeps = async (_cwd: string, scans: FileScan[]): Promise<Deps> => {
+export const buildReverseDeps = async (
+  cwd: string,
+  scans: FileScan[],
+  aliases: Record<string, string> | undefined,
+): Promise<Deps> => {
   const parentsOf = new Map<string, Set<string>>();
   const childrenOf = new Map<string, Set<string>>();
 
   for (const s of scans) {
+    const parentFile = toPosixPath(s.file);
     for (const im of s.imports) {
-      if (!im.source.startsWith('./') && !im.source.startsWith('../')) continue;
-      const child = await resolveImportPath(s.file, im.source);
-      if (!child) continue;
+      let child: string | null = null;
 
-      if (!parentsOf.has(child)) parentsOf.set(child, new Set());
-      parentsOf.get(child)!.add(s.file);
+      if (im.source.startsWith('./') || im.source.startsWith('../')) {
+        child = await resolveImportPath(parentFile, im.source);
+      } else {
+        child = await resolveAliasImportPath(cwd, aliases, im.source);
+      }
 
-      if (!childrenOf.has(s.file)) childrenOf.set(s.file, new Set());
-      childrenOf.get(s.file)!.add(child);
+      const childPosix = toPosixOrNull(child);
+      if (!childPosix) continue;
+
+      if (!parentsOf.has(childPosix)) parentsOf.set(childPosix, new Set());
+      parentsOf.get(childPosix)!.add(parentFile);
+
+      if (!childrenOf.has(parentFile)) childrenOf.set(parentFile, new Set());
+      childrenOf.get(parentFile)!.add(childPosix);
     }
   }
 
@@ -27,8 +40,9 @@ export const buildReverseDeps = async (_cwd: string, scans: FileScan[]): Promise
 };
 
 export const findOwningPage = (file: string, pages: Record<string, PageInfo>, deps: Deps): PageInfo | undefined => {
+  const start = toPosixPath(file);
   const visited = new Set<string>();
-  const q: string[] = [file];
+  const q: string[] = [start];
 
   while (q.length) {
     const cur = q.shift()!;
