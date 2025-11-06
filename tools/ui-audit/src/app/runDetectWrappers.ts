@@ -6,6 +6,7 @@ import fs from 'fs-extra';
 import { ParserBabel } from '../adapters/parserBabel';
 import { collectImportsSet } from '../analyzers/collectImportsSet';
 import { hasAntdJsxUsage } from '../analyzers/hasAntdJsxUsage';
+import { isThinAntWrapper } from '../analyzers/isThinAntWrapper';
 import {
   COMPONENT_TYPES,
   isCamelCaseComponent,
@@ -48,7 +49,7 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
           const code = await fs.readFile(resolved, 'utf8');
           const ast = parser.parse(code) as unknown as t.File;
           const { antdLocals } = collectImportsSet(ast);
-          if (antdLocals.size > 0 && hasAntdJsxUsage(ast, antdLocals)) {
+          if (antdLocals.size > 0 && hasAntdJsxUsage(ast, antdLocals) && isThinAntWrapper(ast, it.component, antdLocals)) {
             const wrapped: ClassifiedItem = {
               ...it,
               type: COMPONENT_TYPES.ANTD_WRAPPER,
