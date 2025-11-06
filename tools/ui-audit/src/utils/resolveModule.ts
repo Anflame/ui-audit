@@ -9,24 +9,35 @@ import fs from 'fs-extra';
 const TRY_EXT = ['.tsx', '.ts', '.jsx', '.js'];
 const TRY_INDEX = ['/index.tsx', '/index.ts', '/index.jsx', '/index.js'];
 
+const ensureFile = async (candidate: string): Promise<string | null> => {
+  try {
+    const stat = await fs.stat(candidate);
+    if (stat.isFile()) return candidate;
+  } catch {
+    /* empty */
+  }
+  return null;
+};
+
 export const resolveImportPath = async (fromFile: string, spec: string): Promise<string | null> => {
   if (!spec.startsWith('./') && !spec.startsWith('../')) return null;
 
   const base = path.resolve(path.dirname(fromFile), spec);
 
-  // 1) уже существующий путь (включая случаи с расширением .ts/.tsx)
-  if (await fs.pathExists(base)) return base;
+  // 1) прямой путь с указанным расширением
+  const direct = await ensureFile(base);
+  if (direct) return direct;
 
   // 2) перебор расширений
   for (const ext of TRY_EXT) {
-    const p = base + ext;
-    if (await fs.pathExists(p)) return p;
+    const candidate = await ensureFile(base + ext);
+    if (candidate) return candidate;
   }
 
-  // 3) index.*
+  // 3) index.* внутри директории
   for (const ix of TRY_INDEX) {
-    const p = base + ix;
-    if (await fs.pathExists(p)) return p;
+    const candidate = await ensureFile(base + ix);
+    if (candidate) return candidate;
   }
 
   return null;

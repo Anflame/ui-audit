@@ -6,7 +6,7 @@ import * as t from '@babel/types';
 import fs from 'fs-extra';
 
 import { ParserBabel } from '../adapters/parserBabel';
-import { resolveImportPath } from '../utils/resolveModule';
+import { resolveImportPath, resolveModuleDeep } from '../utils/resolveModule';
 
 export type PageInfo = {
   pageTitle?: string;
@@ -60,10 +60,11 @@ const extractRoutePathMap = async (entryPath: string): Promise<Record<string, st
       if (t.isTemplateLiteral(val)) {
         const cooked = val.quasis.map((q) => q.value.cooked ?? '').join('');
         const clean = cooked.startsWith('/') ? cooked.slice(1) : cooked;
-        map[key] = clean;
+        map[key] = clean || '/';
       } else if (t.isStringLiteral(val)) {
         const raw = val.value;
-        map[key] = raw.startsWith('/') ? raw.slice(1) : raw;
+        const clean = raw.startsWith('/') ? raw.slice(1) : raw;
+        map[key] = clean || '/';
       }
     }
   }
@@ -145,15 +146,20 @@ export const collectPagesFromRouter = async (cwd: string, routerFile: string): P
     if (!r.compId) continue;
     const spec = importMap.get(r.compId);
     if (!spec) continue;
-    const pageFilePath = await resolveImportPath(abs, spec);
-    if (pageFilePath) {
-      pages[pageFilePath] = {
-        pageTitle: r.title,
-        pageRoute: r.routeClean,
-        pageFilePath,
-        componentName: r.compId,
-      };
-    }
+    const shallow = await resolveImportPath(abs, spec);
+    const deep = await resolveModuleDeep(abs, spec);
+    const target = deep ?? shallow;
+    if (!target) continue;
+
+    const info: PageInfo = {
+      pageTitle: r.title,
+      pageRoute: r.routeClean,
+      pageFilePath: target,
+      componentName: r.compId,
+    };
+
+    pages[target] = info;
+    if (shallow && shallow !== target) pages[shallow] = info;
   }
 
   return pages;

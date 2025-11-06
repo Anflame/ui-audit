@@ -6,7 +6,12 @@ import fs from 'fs-extra';
 import { ParserBabel } from '../adapters/parserBabel';
 import { collectImportsSet } from '../analyzers/collectImportsSet';
 import { hasAntdJsxUsage } from '../analyzers/hasAntdJsxUsage';
-import { COMPONENT_TYPES, isCamelCaseComponent, isRelativeModule, isInteractiveIntrinsic } from '../domain/constants';
+import {
+  COMPONENT_TYPES,
+  isCamelCaseComponent,
+  isRelativeModule,
+  isInteractiveIntrinsic,
+} from '../domain/constants';
 import { resolveModuleDeep } from '../utils/resolveModule';
 
 import type { ClassifiedReport } from '../classifiers/aggregate';
@@ -37,6 +42,9 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
       const resolved = await resolveModuleDeep(it.file, it.sourceModule);
       if (resolved) {
         try {
+          const stat = await fs.stat(resolved);
+          if (!stat.isFile()) throw new Error('resolved path is not a file');
+
           const code = await fs.readFile(resolved, 'utf8');
           const ast = parser.parse(code) as unknown as t.File;
           const { antdLocals } = collectImportsSet(ast);
@@ -60,7 +68,13 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   }
 
   // вырезаем прямых «детей antd» внутри самих файлов-обёрток
-  const filtered = updated.filter((x) => !(x.type === COMPONENT_TYPES.ANTD && x.file && wrapperFiles.has(x.file)));
+  const filtered = updated
+    .filter((x) => !(x.type === COMPONENT_TYPES.ANTD && x.file && wrapperFiles.has(x.file)))
+    .filter((x) => {
+      if (x.type !== COMPONENT_TYPES.LOCAL) return true;
+      if (!x.sourceModule) return true;
+      return !isRelativeModule(x.sourceModule);
+    });
 
   const summary: Record<string, number> = {
     [COMPONENT_TYPES.ANTD]: 0,
