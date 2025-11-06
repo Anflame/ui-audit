@@ -7,17 +7,24 @@ import { ParserBabel } from '../adapters/parserBabel';
 import { collectImportsSet } from '../analyzers/collectImportsSet';
 import { hasAntdJsxUsage } from '../analyzers/hasAntdJsxUsage';
 import { isThinAntWrapper } from '../analyzers/isThinAntWrapper';
-import {
-  COMPONENT_TYPES,
-  isCamelCaseComponent,
-  isRelativeModule,
-  isInteractiveIntrinsic,
-} from '../domain/constants';
-import { resolveModuleDeep } from '../utils/resolveModule';
+import { COMPONENT_TYPES, isCamelCaseComponent, isInteractiveIntrinsic } from '../domain/constants';
+import { resolveAliasModuleDeep, resolveModuleDeep } from '../utils/resolveModule';
 import { toPosixPath } from '../utils/normalizePath';
+import { isLocalImport } from '../utils/isLocalModule';
+import { loadConfig as loadCfg, type ResolvedConfig } from '../utils/config';
 
 import type { ClassifiedReport } from '../classifiers/aggregate';
 import type { ClassifiedItem } from '../classifiers/deriveComponentType';
+
+const resolveLocalComponent = async (
+  cfg: ResolvedConfig,
+  fromFile: string,
+  spec: string,
+): Promise<string | null> => {
+  const rel = await resolveModuleDeep(fromFile, spec);
+  if (rel) return rel;
+  return resolveAliasModuleDeep(cfg.cwd, cfg.aliases, spec);
+};
 
 export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   const parser = new ParserBabel();
@@ -25,6 +32,8 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   if (!(await fs.pathExists(stage2Path))) throw new Error('Не найден classified.json. Сначала запусти Stage 2.');
   const report = (await fs.readJSON(stage2Path)) as ClassifiedReport;
   const updated: ClassifiedItem[] = [];
+
+  const cfg = await loadCfg(cwd);
 
   const wrapperFiles = new Set<string>();
 
@@ -38,10 +47,10 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
       it.type === COMPONENT_TYPES.LOCAL &&
       it.sourceModule &&
       isCamelCaseComponent(it.component) &&
-      isRelativeModule(it.sourceModule)
+      isLocalImport(it.sourceModule, cfg.aliases)
     ) {
       // ГЛУБОКИЙ резолв (баррели/index.ts), чтобы точно дойти до файла компонента
-      const resolved = await resolveModuleDeep(it.file, it.sourceModule);
+      const resolved = await resolveLocalComponent(cfg, it.file, it.sourceModule);
       if (resolved) {
         const resolvedPosix = toPosixPath(resolved);
         try {
@@ -76,7 +85,7 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
     .filter((x) => {
       if (x.type !== COMPONENT_TYPES.LOCAL) return true;
       if (!x.sourceModule) return true;
-      return !isRelativeModule(x.sourceModule);
+      return !isLocalImport(x.sourceModule, cfg.aliases);
     });
 
   const summary: Record<string, number> = {

@@ -1,12 +1,7 @@
-import {
-  COMPONENT_TYPES,
-  INTRINSIC_HTML,
-  isCamelCaseComponent,
-  isInteractiveIntrinsic,
-  isRelativeModule,
-} from '../domain/constants';
+import { COMPONENT_TYPES, INTRINSIC_HTML, isCamelCaseComponent, isInteractiveIntrinsic } from '../domain/constants';
 
 import { classifyByLibrary } from './classifyByLibrary';
+import { isLocalImport } from '../utils/isLocalModule';
 
 import type { JsxUsage } from './mapJsxToImports';
 import type { UiAuditConfig } from '../domain/model';
@@ -61,7 +56,7 @@ export const deriveComponentType = (file: string, usage: JsxUsage, cfg: UiAuditC
     };
   }
 
-  if (isRelativeModule(usage.import.source) && isCamelCaseComponent(usage.element)) {
+  if (isLocalImport(usage.import.source, cfg.aliases) && isCamelCaseComponent(usage.element)) {
     return {
       file,
       component: usage.element,
