@@ -6,7 +6,12 @@ import * as t from '@babel/types';
 import fs from 'fs-extra';
 
 import { ParserBabel } from '../adapters/parserBabel';
-import { resolveImportPath, resolveModuleDeep } from '../utils/resolveModule';
+import {
+  resolveAliasImportPath,
+  resolveAliasModuleDeep,
+  resolveImportPath,
+  resolveModuleDeep,
+} from '../utils/resolveModule';
 
 export type PageInfo = {
   pageTitle?: string;
@@ -72,7 +77,13 @@ const extractRoutePathMap = async (entryPath: string): Promise<Record<string, st
   return map;
 };
 
-export const collectPagesFromRouter = async (cwd: string, routerFile: string): Promise<Record<string, PageInfo>> => {
+type AliasMap = Record<string, string> | undefined;
+
+export const collectPagesFromRouter = async (
+  cwd: string,
+  routerFile: string,
+  aliases: AliasMap,
+): Promise<Record<string, PageInfo>> => {
   const parser = new ParserBabel();
   const abs = path.isAbsolute(routerFile) ? routerFile : path.join(cwd, routerFile);
   const code = await fs.readFile(abs, 'utf8');
@@ -95,7 +106,8 @@ export const collectPagesFromRouter = async (cwd: string, routerFile: string): P
   const routePathImportSpec = Array.from(importMap.entries()).find(([, v]) => v.includes('routeConfig'))?.[1];
   let routeMap: Record<string, string> = {};
   if (routePathImportSpec) {
-    const resolved = await resolveImportPath(abs, routePathImportSpec);
+    let resolved = await resolveImportPath(abs, routePathImportSpec);
+    if (!resolved) resolved = await resolveAliasImportPath(cwd, aliases, routePathImportSpec);
     if (resolved) routeMap = await extractRoutePathMap(resolved);
   }
 
@@ -146,9 +158,14 @@ export const collectPagesFromRouter = async (cwd: string, routerFile: string): P
     if (!r.compId) continue;
     const spec = importMap.get(r.compId);
     if (!spec) continue;
-    const shallow = await resolveImportPath(abs, spec);
-    const deep = await resolveModuleDeep(abs, spec);
-    const target = deep ?? shallow;
+
+    const shallowRelative = await resolveImportPath(abs, spec);
+    const shallowAlias = !shallowRelative ? await resolveAliasImportPath(cwd, aliases, spec) : null;
+
+    const deepRelative = shallowRelative ? await resolveModuleDeep(abs, spec) : null;
+    const deepAlias = !deepRelative && shallowAlias ? await resolveAliasModuleDeep(cwd, aliases, spec) : null;
+
+    const target = deepRelative ?? deepAlias ?? shallowAlias ?? shallowRelative;
     if (!target) continue;
 
     const info: PageInfo = {
@@ -159,16 +176,21 @@ export const collectPagesFromRouter = async (cwd: string, routerFile: string): P
     };
 
     pages[target] = info;
-    if (shallow && shallow !== target) pages[shallow] = info;
+    if (shallowRelative && shallowRelative !== target) pages[shallowRelative] = info;
+    if (shallowAlias && shallowAlias !== target) pages[shallowAlias] = info;
   }
 
   return pages;
 };
 
-export const buildPagesIndex = async (cwd: string, routerFiles: string[]): Promise<Record<string, PageInfo>> => {
+export const buildPagesIndex = async (
+  cwd: string,
+  routerFiles: string[],
+  aliases: AliasMap,
+): Promise<Record<string, PageInfo>> => {
   const acc: Record<string, PageInfo> = {};
   for (const rf of routerFiles) {
-    Object.assign(acc, await collectPagesFromRouter(cwd, rf));
+    Object.assign(acc, await collectPagesFromRouter(cwd, rf, aliases));
   }
   return acc;
 };
