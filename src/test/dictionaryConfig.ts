@@ -1,7 +1,13 @@
 import { type Route, RoutePath } from "../routeConfig.ts";
 import { OrganizationCard } from "@components/Tree1Deep/FistDeep/OrganizationCard";
 import { Reports } from "@components/Tree2Deep/FirstDeep/SecondDeep/Reports";
-import { ReportEdit } from "@components/Tree2Deep/FirstDeep/SecondDeep/Reports/ReportEdit";
+import { lazy } from "react";
+
+const ReportEdit = lazy(() =>
+  import("@components/Tree2Deep/FirstDeep/SecondDeep/Reports/ReportEdit").then(
+    (module) => ({ default: module.ReportEdit }),
+  ),
+);
 
 export const dictionaryConfig: Route = {
   title: "Справочники",
