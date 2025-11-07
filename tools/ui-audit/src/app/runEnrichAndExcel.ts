@@ -37,14 +37,27 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
 
   const details: DetailRow[] = [];
 
+  const toRelative = (filePath: string | undefined | null): string | undefined => {
+    if (!filePath) return undefined;
+    const rel = path.relative(cfg.cwd, filePath).replace(/\\/g, '/');
+    return rel || '.';
+  };
+
+  const formatRoute = (route?: string): string | undefined => {
+    if (!route) return undefined;
+    if (route === '/') return '/';
+    const trimmed = route.replace(/^\/+/, '');
+    return `/${trimmed}`;
+  };
+
   for (const it of final.items) {
     const lib = normSourceLib(it);
 
-    let componentFile = '';
-    if (it.type === COMPONENT_TYPES.ANTD) componentFile = 'antd';
-    else if (it.type === COMPONENT_TYPES.ANTD_WRAPPER) componentFile = it.componentFile ?? 'antd';
-    else if (it.type === COMPONENT_TYPES.KSNM) componentFile = 'ksnm-common-ui';
-    else componentFile = it.file;
+    let componentFileRaw = '';
+    if (it.type === COMPONENT_TYPES.ANTD) componentFileRaw = 'antd';
+    else if (it.type === COMPONENT_TYPES.ANTD_WRAPPER) componentFileRaw = it.componentFile ?? 'antd';
+    else if (it.type === COMPONENT_TYPES.KSNM) componentFileRaw = 'ksnm-common-ui';
+    else componentFileRaw = it.file;
 
     // 1) прямое попадание файла в индекс страниц (tsx)
     let owner = isPage(it.file);
@@ -52,10 +65,15 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
     // 2) если нет — ищем через обратные зависимости (поднимемся до barrel/index.ts, который есть в pages)
     if (!owner) owner = findOwningPage(it.file, pages, deps);
 
+    const componentFile =
+      componentFileRaw === 'antd' || componentFileRaw === 'ksnm-common-ui'
+        ? componentFileRaw
+        : toRelative(componentFileRaw) ?? componentFileRaw;
+
     details.push({
       pageTitle: owner?.pageTitle,
-      pageFile: owner?.pageFilePath,
-      route: owner?.pageRoute,
+      pageFile: toRelative(owner?.pageFilePath),
+      route: formatRoute(owner?.pageRoute),
       uiComponent: it.component,
       componentFile,
       label: it.label,
@@ -63,6 +81,16 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
       type: it.type,
     });
   }
+
+  details.sort((a, b) => {
+    const routeA = a.route ?? '';
+    const routeB = b.route ?? '';
+    if (routeA !== routeB) return routeA.localeCompare(routeB, 'ru');
+    const pageA = a.pageFile ?? '';
+    const pageB = b.pageFile ?? '';
+    if (pageA !== pageB) return pageA.localeCompare(pageB, 'ru');
+    return a.uiComponent.localeCompare(b.uiComponent, 'ru');
+  });
 
   const xlsxPath = await writeExcel(cwd, cfg.projectName, final, details);
   console.log('── UI-Audit / Excel');

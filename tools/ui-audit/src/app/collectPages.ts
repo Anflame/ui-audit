@@ -128,17 +128,30 @@ const extractLazyImportPath = (expr: t.Node | null): string | null => {
 
   const resolved = unwrapExpression(firstArg as t.Node);
   if (resolved && (t.isArrowFunctionExpression(resolved) || t.isFunctionExpression(resolved))) {
-    if (t.isCallExpression(resolved.body)) {
-      return extractImportFromDynamic(resolved.body);
+    const extractFromBody = (node: t.Node | null | undefined): string | null => {
+      if (!node) return null;
+      const unwrapped = unwrapExpression(node as t.Node);
+      if (!unwrapped) return null;
+      if (t.isAwaitExpression(unwrapped)) return extractFromBody(unwrapped.argument as t.Node);
+      if (t.isCallExpression(unwrapped)) {
+        const direct = extractImportFromDynamic(unwrapped);
+        if (direct) return direct;
+        if (t.isMemberExpression(unwrapped.callee) && t.isCallExpression(unwrapped.callee.object)) {
+          return extractFromBody(unwrapped.callee.object);
+        }
+      }
+      return null;
+    };
+
+    if (t.isCallExpression(resolved.body) || t.isAwaitExpression(resolved.body)) {
+      const found = extractFromBody(resolved.body);
+      if (found) return found;
     }
     if (t.isBlockStatement(resolved.body)) {
       for (const stmt of resolved.body.body) {
         if (t.isReturnStatement(stmt)) {
-          const ret = unwrapExpression(stmt.argument as t.Node);
-          if (ret && t.isCallExpression(ret)) {
-            const dyn = extractImportFromDynamic(ret);
-            if (dyn) return dyn;
-          }
+          const found = extractFromBody(stmt.argument as t.Node);
+          if (found) return found;
         }
       }
     }
@@ -390,9 +403,24 @@ const computeRouteFromExpression = (
 ): string | undefined => {
   if (!expr) return undefined;
   if (t.isStringLiteral(expr)) return cleanRouteString(expr.value);
-  if (t.isTemplateLiteral(expr) && expr.quasis.length === 1) {
-    const cooked = expr.quasis[0]?.value.cooked ?? '';
-    return cleanRouteString(cooked);
+  if (t.isTemplateLiteral(expr)) {
+    let acc = '';
+    for (let i = 0; i < expr.quasis.length; i += 1) {
+      const quasi = expr.quasis[i];
+      acc += quasi?.value.cooked ?? '';
+      if (i < expr.expressions.length) {
+        const part = computeRouteFromExpression(expr.expressions[i] as t.Node, routeMap);
+        if (!part) return undefined;
+        acc += part === '/' ? '' : part;
+      }
+    }
+    return cleanRouteString(acc);
+  }
+  if (t.isBinaryExpression(expr) && expr.operator === '+') {
+    const left = computeRouteFromExpression(expr.left as t.Node, routeMap);
+    const right = computeRouteFromExpression(expr.right as t.Node, routeMap);
+    if (!left || !right) return undefined;
+    return cleanRouteString(`${left}${right}`);
   }
   if (
     t.isMemberExpression(expr) &&
