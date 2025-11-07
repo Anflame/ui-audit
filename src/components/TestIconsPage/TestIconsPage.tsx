@@ -3,6 +3,7 @@ import { TestAntWrapped } from "../common/TestAntWrapped";
 import { TestKSNM } from "../common/TestKSNM";
 import { Input } from "antd";
 import { TestLocal } from "../common/TestLocal";
+import { Button } from "@common/Button";
 
 const TestIconsPage = () => {
   const onSubmitForm = (e: FormEvent<HTMLFormElement>) => {
@@ -14,6 +15,7 @@ const TestIconsPage = () => {
       <TestKSNM />
       <Input title="testicon.ant" />
       <TestLocal />
+      <Button />
     </form>
   );
 };
