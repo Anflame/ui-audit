@@ -26,6 +26,37 @@ const resolveLocalComponent = async (
   return resolveAliasModuleDeep(cfg.cwd, cfg.aliases, spec);
 };
 
+const computeCommonRoots = (cfg: ResolvedConfig): string[] => {
+  const roots = new Set<string>();
+  for (const root of cfg.srcRoots) {
+    const absRoot = path.isAbsolute(root) ? root : path.resolve(cfg.cwd, root);
+    const candidate = path.join(absRoot, 'components', 'common');
+    roots.add(toPosixPath(candidate));
+  }
+
+  if (cfg.aliases) {
+    for (const target of Object.values(cfg.aliases)) {
+      const absTarget = path.isAbsolute(target) ? target : path.resolve(cfg.cwd, target);
+      const normalized = toPosixPath(absTarget);
+      const marker = '/components/common';
+      const idx = normalized.indexOf(marker);
+      if (idx !== -1) {
+        roots.add(normalized.slice(0, idx + marker.length));
+      }
+    }
+  }
+
+  return Array.from(roots);
+};
+
+const isWithinCommon = (filePath: string, roots: string[]): boolean => {
+  for (const root of roots) {
+    if (filePath === root) return true;
+    if (filePath.startsWith(`${root}/`)) return true;
+  }
+  return false;
+};
+
 export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   const parser = new ParserBabel();
   const stage2Path = path.join(cwd, '.ui-audit', 'tmp', 'classified.json');
@@ -34,8 +65,18 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   const updated: ClassifiedItem[] = [];
 
   const cfg = await loadCfg(cwd);
+  const commonRoots = computeCommonRoots(cfg);
 
   const wrapperFiles = new Set<string>();
+  const resolveCache = new Map<string, string | null>();
+
+  const resolveWithCache = async (fromFile: string, spec: string): Promise<string | null> => {
+    const key = `${fromFile}:::${spec}`;
+    if (resolveCache.has(key)) return resolveCache.get(key) ?? null;
+    const resolved = await resolveLocalComponent(cfg, fromFile, spec);
+    resolveCache.set(key, resolved ?? null);
+    return resolved ?? null;
+  };
 
   for (const it of report.items) {
     // Пропускаем неинтерактивные HTML
@@ -50,7 +91,7 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
       isLocalImport(it.sourceModule, cfg.aliases)
     ) {
       // ГЛУБОКИЙ резолв (баррели/index.ts), чтобы точно дойти до файла компонента
-      const resolved = await resolveLocalComponent(cfg, it.file, it.sourceModule);
+      const resolved = await resolveWithCache(it.file, it.sourceModule);
       if (resolved) {
         const resolvedPosix = toPosixPath(resolved);
         try {
@@ -59,8 +100,24 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
 
           const code = await fs.readFile(resolvedPosix, 'utf8');
           const ast = parser.parse(code) as unknown as t.File;
-          const { antdLocals } = collectImportsSet(ast);
-          if (antdLocals.size > 0 && hasAntdJsxUsage(ast, antdLocals) && isThinAntWrapper(ast, it.component, antdLocals)) {
+          const { antdLocals, moduleByLocal } = collectImportsSet(ast);
+          let allowedWrapperLocals = new Set<string>();
+
+          if (isWithinCommon(resolvedPosix, commonRoots)) {
+            allowedWrapperLocals = new Set<string>();
+            for (const [localName, source] of moduleByLocal.entries()) {
+              if (!isLocalImport(source, cfg.aliases)) continue;
+              const dep = await resolveWithCache(resolvedPosix, source);
+              if (!dep) continue;
+              if (isWithinCommon(dep, commonRoots)) allowedWrapperLocals.add(localName);
+            }
+          }
+
+          if (
+            antdLocals.size > 0 &&
+            hasAntdJsxUsage(ast, antdLocals) &&
+            isThinAntWrapper(ast, it.component, antdLocals, allowedWrapperLocals)
+          ) {
             const wrapped: ClassifiedItem = {
               ...it,
               type: COMPONENT_TYPES.ANTD_WRAPPER,
