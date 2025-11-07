@@ -26,12 +26,12 @@ export const routeConfig: RouteConfig = {
       component: TestFeedbackPage,
       hidden: true,
     },
+    { ...dictionaryConfig },
     {
       title: "Домашняя страница",
       path: RoutePath.HOME_PAGE,
       component: TestHomePage,
       hidden: true,
     },
-    { ...dictionaryConfig },
   ],
 };
