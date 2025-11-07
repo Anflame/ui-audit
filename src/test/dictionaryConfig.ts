@@ -1,5 +1,5 @@
 import { type Route, RoutePath } from "../routeConfig.ts";
-import { OrganizationCard } from "@components/Tree1Deep/FistDeep/OrganizationCard";
+import { OrganizationCardComponent } from "@components/Tree1Deep/FistDeep/OrganizationCard";
 import { Reports } from "@components/Tree2Deep/FirstDeep/SecondDeep/Reports";
 import { lazy } from "react";
 
@@ -19,7 +19,7 @@ export const dictionaryConfig: Route = {
         {
           title: "Общая информация об организации",
           path: `${RoutePath.ORGANIZATION_CARD}/:code`,
-          component: OrganizationCard,
+          component: OrganizationCardComponent,
           resourceName: "CmOrganization",
           hidden: true,
         },

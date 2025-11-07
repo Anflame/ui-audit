@@ -8,7 +8,7 @@
     "@": "src",
     "@components": "src/components",
     "@common": "src/components/common",
-    "@form": "src/components/common/form/"
+    "@form": "src/components/common/form"
   },
   "libraries": {
     "antd": ["antd", "@ant-design/icons"],

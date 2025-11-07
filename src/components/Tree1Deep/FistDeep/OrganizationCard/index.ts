@@ -1,1 +1,1 @@
-export { default as OrganizationCard } from "./OrganizationCard";
+export { OrganizationCardComponent } from "./OrganizationCard";
