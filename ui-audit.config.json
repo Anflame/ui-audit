@@ -12,7 +12,7 @@
   },
   "libraries": {
     "antd": ["antd", "@ant-design/icons"],
-    "ksnm-common-ui": ["ksnm-common-ui"]
+    "ksnm-common-ui": ["ksnm-common-ui", "ksnm-common-ui-table"]
   },
   "options": {
     "splitAntIcons": false,

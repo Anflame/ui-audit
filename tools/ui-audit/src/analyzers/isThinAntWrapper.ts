@@ -70,6 +70,38 @@ const classifyJsxElement = (
   return { hasAnt: false, hasForeign: true };
 };
 
+const isChildrenAccess = (expr: t.Expression | t.PrivateName): boolean => {
+  if (t.isIdentifier(expr)) return expr.name === 'children';
+
+  if (t.isMemberExpression(expr)) {
+    if (expr.computed) return false;
+    if (!t.isIdentifier(expr.property) || expr.property.name !== 'children') return false;
+
+    const obj = expr.object;
+    if (t.isIdentifier(obj)) return obj.name === 'props' || /Props$/u.test(obj.name);
+    if (t.isThisExpression(obj)) return true;
+    if (t.isMemberExpression(obj)) {
+      if (obj.computed) return false;
+      if (!t.isIdentifier(obj.property)) return false;
+      if (obj.property.name === 'props') return t.isThisExpression(obj.object) || isChildrenAccess(obj.object);
+    }
+    if (t.isOptionalMemberExpression(obj)) {
+      if (!t.isIdentifier(obj.property) || obj.property.name !== 'props') return false;
+      return t.isThisExpression(obj.object) || isChildrenAccess(obj.object);
+    }
+  }
+
+  if (t.isOptionalMemberExpression(expr)) {
+    if (!t.isIdentifier(expr.property) || expr.property.name !== 'children') return false;
+    const obj = expr.object;
+    if (t.isIdentifier(obj)) return obj.name === 'props' || /Props$/u.test(obj.name);
+    if (t.isThisExpression(obj)) return true;
+    if (t.isMemberExpression(obj) || t.isOptionalMemberExpression(obj)) return isChildrenAccess(obj);
+  }
+
+  return false;
+};
+
 const classifyExpression = (
   expr: t.Expression | t.PrivateName | null | undefined,
   antdLocals: Set<string>,
@@ -78,6 +110,8 @@ const classifyExpression = (
   if (!expr) return { hasAnt: false, hasForeign: false };
 
   if (t.isParenthesizedExpression(expr)) return classifyExpression(expr.expression, antdLocals, allowedWrapperLocals);
+
+  if (isChildrenAccess(expr)) return { hasAnt: false, hasForeign: false };
 
   if (t.isJSXElement(expr)) return classifyJsxElement(expr, antdLocals, allowedWrapperLocals);
 

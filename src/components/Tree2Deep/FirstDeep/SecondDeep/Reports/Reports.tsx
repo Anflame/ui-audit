@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 const Reports = () => {
   return (
     <div>
@@ -6,4 +8,4 @@ const Reports = () => {
   );
 };
 
-export default Reports;
+export default memo(Reports);
