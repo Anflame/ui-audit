@@ -23,51 +23,102 @@ const getBaseJsxIdentifier = (
   return null;
 };
 
+type JsxScanResult = { hasAnt: boolean; hasForeign: boolean; wrapped: Set<string> };
+
+const emptyScan = (): JsxScanResult => ({ hasAnt: false, hasForeign: false, wrapped: new Set<string>() });
+
+const mergeScan = (target: JsxScanResult, source: JsxScanResult): void => {
+  if (source.hasAnt) target.hasAnt = true;
+  if (source.hasForeign) target.hasForeign = true;
+  for (const name of source.wrapped) target.wrapped.add(name);
+};
+
 const classifyJsxChildren = (
   children: (t.JSXElement | t.JSXFragment | t.JSXText | t.JSXSpreadChild | t.JSXExpressionContainer)[],
   antdLocals: Set<string>,
   allowedWrapperLocals: Set<string>,
-): { hasAnt: boolean; hasForeign: boolean } => {
-  let hasAnt = false;
-  let hasForeign = false;
+  allowedUiLocals: Set<string>,
+  depth: number,
+): JsxScanResult => {
+  const acc = emptyScan();
   for (const child of children) {
-    if (hasForeign) break;
+    if (acc.hasForeign) break;
     if (t.isJSXElement(child)) {
-      const res = classifyJsxElement(child, antdLocals, allowedWrapperLocals);
-      hasAnt ||= res.hasAnt;
-      hasForeign ||= res.hasForeign;
+      const res = classifyJsxElement(child, antdLocals, allowedWrapperLocals, allowedUiLocals, depth + 1);
+      mergeScan(acc, res);
     } else if (t.isJSXFragment(child)) {
-      const res = classifyJsxChildren(child.children as typeof children, antdLocals, allowedWrapperLocals);
-      hasAnt ||= res.hasAnt;
-      hasForeign ||= res.hasForeign;
+      const res = classifyJsxChildren(
+        child.children as typeof children,
+        antdLocals,
+        allowedWrapperLocals,
+        allowedUiLocals,
+        depth + 1,
+      );
+      mergeScan(acc, res);
     } else if (t.isJSXExpressionContainer(child)) {
-      const res = classifyExpression(child.expression, antdLocals, allowedWrapperLocals);
-      hasAnt ||= res.hasAnt;
-      hasForeign ||= res.hasForeign;
+      const res = classifyExpression(child.expression, antdLocals, allowedWrapperLocals, allowedUiLocals, depth + 1);
+      mergeScan(acc, res);
     } else if (t.isJSXText(child)) {
-      if (child.value.trim().length > 0) hasForeign = true;
+      if (child.value.trim().length > 0) acc.hasForeign = true;
     } else if (child) {
-      hasForeign = true;
+      acc.hasForeign = true;
     }
   }
-  return { hasAnt, hasForeign };
+  return acc;
 };
 
 const classifyJsxElement = (
   element: t.JSXElement,
   antdLocals: Set<string>,
   allowedWrapperLocals: Set<string>,
-): { hasAnt: boolean; hasForeign: boolean } => {
+  allowedUiLocals: Set<string>,
+  depth: number,
+): JsxScanResult => {
   if (isAntName(element.openingElement.name, antdLocals)) {
-    return { hasAnt: true, hasForeign: false };
+    const res = emptyScan();
+    res.hasAnt = true;
+    const base = getBaseJsxIdentifier(element.openingElement.name);
+    if (base && depth === 0) res.wrapped.add(base);
+    const childrenScan = classifyJsxChildren(
+      element.children as Parameters<typeof classifyJsxChildren>[0],
+      antdLocals,
+      allowedWrapperLocals,
+      allowedUiLocals,
+      depth + 1,
+    );
+    mergeScan(res, childrenScan);
+    return res;
   }
 
   const base = getBaseJsxIdentifier(element.openingElement.name);
   if (base && allowedWrapperLocals.has(base)) {
-    return classifyJsxChildren(element.children as Parameters<typeof classifyJsxChildren>[0], antdLocals, allowedWrapperLocals);
+    return classifyJsxChildren(
+      element.children as Parameters<typeof classifyJsxChildren>[0],
+      antdLocals,
+      allowedWrapperLocals,
+      allowedUiLocals,
+      depth + 1,
+    );
   }
 
-  return { hasAnt: false, hasForeign: true };
+  if (base && base.toLowerCase() === base) {
+    const childrenScan = classifyJsxChildren(
+      element.children as Parameters<typeof classifyJsxChildren>[0],
+      antdLocals,
+      allowedWrapperLocals,
+      allowedUiLocals,
+      depth + 1,
+    );
+    return childrenScan;
+  }
+
+  if (base && allowedUiLocals.has(base)) {
+    return emptyScan();
+  }
+
+  const res = emptyScan();
+  res.hasForeign = true;
+  return res;
 };
 
 const isChildrenAccess = (expr: t.Expression | t.PrivateName): boolean => {
@@ -106,31 +157,49 @@ const classifyExpression = (
   expr: t.Expression | t.PrivateName | null | undefined,
   antdLocals: Set<string>,
   allowedWrapperLocals: Set<string>,
-): { hasAnt: boolean; hasForeign: boolean } => {
-  if (!expr) return { hasAnt: false, hasForeign: false };
+  allowedUiLocals: Set<string>,
+  depth: number,
+): JsxScanResult => {
+  if (!expr) return emptyScan();
 
-  if (t.isParenthesizedExpression(expr)) return classifyExpression(expr.expression, antdLocals, allowedWrapperLocals);
+  if (t.isParenthesizedExpression(expr))
+    return classifyExpression(expr.expression, antdLocals, allowedWrapperLocals, allowedUiLocals, depth);
 
-  if (isChildrenAccess(expr)) return { hasAnt: false, hasForeign: false };
+  if (isChildrenAccess(expr)) return emptyScan();
 
-  if (t.isJSXElement(expr)) return classifyJsxElement(expr, antdLocals, allowedWrapperLocals);
+  if (t.isJSXElement(expr)) return classifyJsxElement(expr, antdLocals, allowedWrapperLocals, allowedUiLocals, depth);
 
   if (t.isJSXFragment(expr))
-    return classifyJsxChildren(expr.children as Parameters<typeof classifyJsxChildren>[0], antdLocals, allowedWrapperLocals);
+    return classifyJsxChildren(
+      expr.children as Parameters<typeof classifyJsxChildren>[0],
+      antdLocals,
+      allowedWrapperLocals,
+      allowedUiLocals,
+      depth,
+    );
 
   if (t.isConditionalExpression(expr)) {
-    const left = classifyExpression(expr.consequent, antdLocals, allowedWrapperLocals);
-    const right = classifyExpression(expr.alternate, antdLocals, allowedWrapperLocals);
-    return { hasAnt: left.hasAnt || right.hasAnt, hasForeign: left.hasForeign || right.hasForeign };
+    const left = classifyExpression(expr.consequent, antdLocals, allowedWrapperLocals, allowedUiLocals, depth);
+    const right = classifyExpression(expr.alternate, antdLocals, allowedWrapperLocals, allowedUiLocals, depth);
+    const acc = emptyScan();
+    mergeScan(acc, left);
+    mergeScan(acc, right);
+    return acc;
   }
 
   if (t.isLogicalExpression(expr)) {
-    return classifyExpression(expr.right, antdLocals, allowedWrapperLocals);
+    return classifyExpression(expr.right, antdLocals, allowedWrapperLocals, allowedUiLocals, depth);
   }
 
   if (t.isSequenceExpression(expr)) {
-    if (expr.expressions.length === 0) return { hasAnt: false, hasForeign: false };
-    return classifyExpression(expr.expressions[expr.expressions.length - 1], antdLocals, allowedWrapperLocals);
+    if (expr.expressions.length === 0) return emptyScan();
+    return classifyExpression(
+      expr.expressions[expr.expressions.length - 1],
+      antdLocals,
+      allowedWrapperLocals,
+      allowedUiLocals,
+      depth,
+    );
   }
 
   if (t.isCallExpression(expr)) {
@@ -143,35 +212,49 @@ const classifyExpression = (
     ) {
       const first = expr.arguments[0];
       if (t.isIdentifier(first)) {
-        return antdLocals.has(first.name)
-          ? { hasAnt: true, hasForeign: false }
-          : { hasAnt: false, hasForeign: true };
+        const res = emptyScan();
+        if (antdLocals.has(first.name)) {
+          res.hasAnt = true;
+          if (depth === 0) res.wrapped.add(first.name);
+        } else {
+          if (!allowedUiLocals.has(first.name)) res.hasForeign = true;
+        }
+        return res;
       }
     }
-    return { hasAnt: false, hasForeign: true };
+    const res = emptyScan();
+    res.hasForeign = true;
+    return res;
   }
 
   if (t.isIdentifier(expr)) {
-    if (expr.name === 'undefined' || expr.name === 'null') return { hasAnt: false, hasForeign: false };
+    if (expr.name === 'undefined' || expr.name === 'null') return emptyScan();
   }
 
-  if (t.isNullLiteral(expr) || t.isBooleanLiteral(expr)) return { hasAnt: false, hasForeign: false };
+  if (t.isNullLiteral(expr) || t.isBooleanLiteral(expr)) return emptyScan();
 
-  return { hasAnt: false, hasForeign: true };
+  const res = emptyScan();
+  res.hasForeign = true;
+  return res;
 };
+
+type WrapperVerdict = { verdict: 'wrapper' | 'reject' | 'unknown'; wrappedLocals: Set<string> };
 
 const evaluateFunctionBody = (
   fnPath: NodePath<t.Function | t.ArrowFunctionExpression>,
   antdLocals: Set<string>,
   allowedWrapperLocals: Set<string>,
-): 'wrapper' | 'reject' | 'unknown' => {
+  allowedUiLocals: Set<string>,
+): WrapperVerdict => {
   let sawAnt = false;
   let sawForeign = false;
+  const wrapped = new Set<string>();
 
   const consider = (expr: t.Expression | t.PrivateName | null | undefined) => {
-    const res = classifyExpression(expr, antdLocals, allowedWrapperLocals);
+    const res = classifyExpression(expr, antdLocals, allowedWrapperLocals, allowedUiLocals, 0);
     if (res.hasAnt) sawAnt = true;
     if (res.hasForeign) sawForeign = true;
+    for (const name of res.wrapped) wrapped.add(name);
   };
 
   if (fnPath.isArrowFunctionExpression() && !fnPath.get('body').isBlockStatement()) {
@@ -185,21 +268,23 @@ const evaluateFunctionBody = (
     });
   }
 
-  if (sawForeign) return 'reject';
-  if (sawAnt) return 'wrapper';
-  return 'unknown';
+  if (sawForeign) return { verdict: 'reject', wrappedLocals: new Set<string>() };
+  if (sawAnt) return { verdict: 'wrapper', wrappedLocals: wrapped };
+  return { verdict: 'unknown', wrappedLocals: new Set<string>() };
 };
 
 const evaluateInitializer = (
   initPath: NodePath,
   antdLocals: Set<string>,
   allowedWrapperLocals: Set<string>,
-): 'wrapper' | 'reject' | 'unknown' => {
+  allowedUiLocals: Set<string>,
+): WrapperVerdict => {
   if (initPath.isArrowFunctionExpression() || initPath.isFunctionExpression()) {
     return evaluateFunctionBody(
       initPath as NodePath<t.Function | t.ArrowFunctionExpression>,
       antdLocals,
       allowedWrapperLocals,
+      allowedUiLocals,
     );
   }
 
@@ -212,8 +297,9 @@ const evaluateInitializer = (
             argPath as NodePath<t.Function | t.ArrowFunctionExpression>,
             antdLocals,
             allowedWrapperLocals,
+            allowedUiLocals,
           );
-          if (verdict !== 'unknown') return verdict;
+          if (verdict.verdict !== 'unknown') return verdict;
         }
       }
     } else if (firstArg && (firstArg.isFunctionExpression() || firstArg.isArrowFunctionExpression())) {
@@ -221,33 +307,42 @@ const evaluateInitializer = (
         firstArg as NodePath<t.Function | t.ArrowFunctionExpression>,
         antdLocals,
         allowedWrapperLocals,
+        allowedUiLocals,
       );
     }
   }
 
-  return 'unknown';
+  return { verdict: 'unknown', wrappedLocals: new Set<string>() };
 };
 
-export const isThinAntWrapper = (
+export const analyzeThinAntWrapper = (
   astFile: t.File,
   componentName: string,
   antdLocals: Set<string>,
   allowedWrapperLocals: Set<string> = new Set<string>(),
-): boolean => {
+  allowedUiLocals: Set<string> = new Set<string>(),
+): WrapperVerdict => {
   let verdict: 'wrapper' | 'reject' | 'unknown' = 'unknown';
+  let wrapped = new Set<string>();
+
+  const adopt = (res: WrapperVerdict) => {
+    if (verdict !== 'unknown') return;
+    verdict = res.verdict;
+    wrapped = res.wrappedLocals;
+  };
 
   traverse(astFile, {
     FunctionDeclaration(path) {
       if (verdict !== 'unknown') return;
       if (!path.node.id || path.node.id.name !== componentName) return;
-      verdict = evaluateFunctionBody(path as NodePath<t.Function>, antdLocals, allowedWrapperLocals);
+      adopt(evaluateFunctionBody(path as NodePath<t.Function>, antdLocals, allowedWrapperLocals, allowedUiLocals));
     },
     VariableDeclarator(path) {
       if (verdict !== 'unknown') return;
       if (!t.isIdentifier(path.node.id) || path.node.id.name !== componentName) return;
       const initPath = path.get('init');
       if (!initPath) return;
-      verdict = evaluateInitializer(initPath as NodePath, antdLocals, allowedWrapperLocals);
+      adopt(evaluateInitializer(initPath as NodePath, antdLocals, allowedWrapperLocals, allowedUiLocals));
     },
     ExportDefaultDeclaration(path) {
       if (verdict !== 'unknown') return;
@@ -257,16 +352,19 @@ export const isThinAntWrapper = (
         return;
       }
       if (decl.isFunctionDeclaration() || decl.isArrowFunctionExpression() || decl.isFunctionExpression()) {
-        verdict = evaluateFunctionBody(
-          decl as NodePath<t.Function | t.ArrowFunctionExpression>,
-          antdLocals,
-          allowedWrapperLocals,
+        adopt(
+          evaluateFunctionBody(
+            decl as NodePath<t.Function | t.ArrowFunctionExpression>,
+            antdLocals,
+            allowedWrapperLocals,
+            allowedUiLocals,
+          ),
         );
       }
     },
   });
 
-  return verdict === 'wrapper';
+  return { verdict, wrappedLocals: wrapped };
 };
 
-export default isThinAntWrapper;
+export default analyzeThinAntWrapper;
