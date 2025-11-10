@@ -39,12 +39,14 @@ const classifyJsxChildren = (
   allowedWrapperLocals: Set<string>,
   allowedUiLocals: Set<string>,
   depth: number,
+  bump = true,
 ): JsxScanResult => {
   const acc = emptyScan();
   for (const child of children) {
     if (acc.hasForeign) break;
+    const nextDepth = bump ? depth + 1 : depth;
     if (t.isJSXElement(child)) {
-      const res = classifyJsxElement(child, antdLocals, allowedWrapperLocals, allowedUiLocals, depth + 1);
+      const res = classifyJsxElement(child, antdLocals, allowedWrapperLocals, allowedUiLocals, nextDepth);
       mergeScan(acc, res);
     } else if (t.isJSXFragment(child)) {
       const res = classifyJsxChildren(
@@ -56,7 +58,7 @@ const classifyJsxChildren = (
       );
       mergeScan(acc, res);
     } else if (t.isJSXExpressionContainer(child)) {
-      const res = classifyExpression(child.expression, antdLocals, allowedWrapperLocals, allowedUiLocals, depth + 1);
+      const res = classifyExpression(child.expression, antdLocals, allowedWrapperLocals, allowedUiLocals, nextDepth);
       mergeScan(acc, res);
     } else if (t.isJSXText(child)) {
       if (child.value.trim().length > 0) acc.hasForeign = true;
@@ -97,7 +99,8 @@ const classifyJsxElement = (
       antdLocals,
       allowedWrapperLocals,
       allowedUiLocals,
-      depth + 1,
+      depth,
+      false,
     );
   }
 

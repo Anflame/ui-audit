@@ -140,7 +140,7 @@ const dropNestedWithinWrappers = async (
         enter(path: NodePath<t.JSXElement>) {
           const name = getJsxElementName(path.node.openingElement.name);
           if (!name) return;
-          if (stack.length > 0 && tracked.has(name)) {
+          if (stack.length > 0 && tracked.has(name) && !wrappers.has(name)) {
             counters.set(name, (counters.get(name) ?? 0) + 1);
           }
           if (wrappers.has(name)) stack.push(name);
