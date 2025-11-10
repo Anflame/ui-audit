@@ -1,5 +1,7 @@
 import path from 'node:path';
 
+// @ts-expect-error: typings for @babel/traverse are not available in this package
+import traverse, { type NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 import fs from 'fs-extra';
 
@@ -55,6 +57,130 @@ const isWithinCommon = (filePath: string, roots: string[]): boolean => {
     if (filePath.startsWith(`${root}/`)) return true;
   }
   return false;
+};
+
+const getJsxElementName = (
+  name: t.JSXIdentifier | t.JSXMemberExpression | t.JSXNamespacedName,
+): string | null => {
+  if (t.isJSXIdentifier(name)) return name.name;
+  if (t.isJSXMemberExpression(name)) {
+    const resolveMember = (expr: t.JSXMemberExpression): string => {
+      const left = t.isJSXIdentifier(expr.object)
+        ? expr.object.name
+        : t.isJSXMemberExpression(expr.object)
+          ? resolveMember(expr.object)
+          : '';
+      const right = t.isJSXIdentifier(expr.property) ? expr.property.name : '';
+      if (left && right) return `${left}.${right}`;
+      return right || left || '';
+    };
+    const res = resolveMember(name);
+    return res || null;
+  }
+  if (t.isJSXNamespacedName(name)) {
+    const ns = t.isJSXIdentifier(name.namespace) ? name.namespace.name : '';
+    const local = t.isJSXIdentifier(name.name) ? name.name.name : '';
+    if (ns && local) return `${ns}:${local}`;
+    return local || ns || null;
+  }
+  return null;
+};
+
+const dropNestedWithinWrappers = async (
+  parser: ParserBabel,
+  items: ClassifiedItem[],
+): Promise<ClassifiedItem[]> => {
+  const wrappersByFile = new Map<string, Set<string>>();
+  const itemsByFile = new Map<string, ClassifiedItem[]>();
+
+  for (const item of items) {
+    const file = item.file;
+    if (!file) continue;
+    if (!itemsByFile.has(file)) itemsByFile.set(file, []);
+    itemsByFile.get(file)?.push(item);
+    if (item.type === COMPONENT_TYPES.ANTD_WRAPPER) {
+      if (!wrappersByFile.has(file)) wrappersByFile.set(file, new Set<string>());
+      wrappersByFile.get(file)?.add(item.component);
+    }
+  }
+
+  if (wrappersByFile.size === 0) return items;
+
+  const astCache = new Map<string, t.File | null>();
+  const getAst = async (file: string): Promise<t.File | null> => {
+    if (astCache.has(file)) return astCache.get(file) ?? null;
+    try {
+      const code = await fs.readFile(file, 'utf8');
+      const ast = parser.parse(code) as unknown as t.File;
+      astCache.set(file, ast);
+      return ast;
+    } catch {
+      astCache.set(file, null);
+      return null;
+    }
+  };
+
+  const dropsByFile = new Map<string, Map<string, number>>();
+
+  for (const [file, wrappers] of wrappersByFile.entries()) {
+    if (!file || wrappers.size === 0) continue;
+    const fileItems = itemsByFile.get(file);
+    if (!fileItems || fileItems.length === 0) continue;
+
+    const tracked = new Set<string>(fileItems.map((it) => it.component));
+
+    const ast = await getAst(file);
+    if (!ast) continue;
+
+    const stack: string[] = [];
+    const counters = new Map<string, number>();
+
+    traverse(ast, {
+      JSXElement: {
+        enter(path: NodePath<t.JSXElement>) {
+          const name = getJsxElementName(path.node.openingElement.name);
+          if (!name) return;
+          if (stack.length > 0 && tracked.has(name)) {
+            counters.set(name, (counters.get(name) ?? 0) + 1);
+          }
+          if (wrappers.has(name)) stack.push(name);
+        },
+        exit(path: NodePath<t.JSXElement>) {
+          const name = getJsxElementName(path.node.openingElement.name);
+          if (!name) return;
+          if (wrappers.has(name)) stack.pop();
+        },
+      },
+    });
+
+    if (counters.size > 0) dropsByFile.set(file, counters);
+  }
+
+  if (dropsByFile.size === 0) return items;
+
+  const trimmed: ClassifiedItem[] = [];
+  for (const item of items) {
+    const file = item.file;
+    if (!file) {
+      trimmed.push(item);
+      continue;
+    }
+    const counters = dropsByFile.get(file);
+    if (!counters) {
+      trimmed.push(item);
+      continue;
+    }
+    const drop = counters.get(item.component);
+    if (!drop) {
+      trimmed.push(item);
+      continue;
+    }
+    const remaining = (item.count ?? 0) - drop;
+    if (remaining <= 0) continue;
+    trimmed.push({ ...item, count: remaining });
+  }
+
+  return trimmed;
 };
 
 export const runDetectWrappers = async (cwd: string = process.cwd()) => {
@@ -158,24 +284,29 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
     updated.push(it);
   }
 
-  // вырезаем прямых «детей antd» внутри самих файлов-обёрток
-  const filtered = updated
-    .filter((x) => {
-      if (x.type !== COMPONENT_TYPES.ANTD) return true;
-      if (!x.file) return true;
-      if (!wrapperFiles.has(x.file)) return true;
-      const wrappedLocals = wrappedAntLocalsByFile.get(x.file);
-      if (!wrappedLocals || wrappedLocals.size === 0) return true;
-      const base = x.component.includes('.') ? x.component.split('.')[0] ?? x.component : x.component;
-      return !wrappedLocals.has(base);
-    })
-    .filter((x) => {
-      if (x.type !== COMPONENT_TYPES.LOCAL) return true;
-      if (!x.sourceModule) return true;
-      const key = `${x.file}:::${x.sourceModule}`;
-      if (!isLocalImport(x.sourceModule, cfg.aliases)) return true;
-      return !wrapperLocalImports.has(key);
-    });
+  const pruned = await dropNestedWithinWrappers(parser, updated);
+
+  const filtered: ClassifiedItem[] = [];
+  for (const item of pruned) {
+    if (item.type === COMPONENT_TYPES.ANTD && item.file && wrapperFiles.has(item.file)) {
+      const wrappedLocals = wrappedAntLocalsByFile.get(item.file);
+      if (wrappedLocals && wrappedLocals.size > 0) {
+        const base = item.component.includes('.') ? item.component.split('.')[0] ?? item.component : item.component;
+        if (wrappedLocals.has(base)) continue;
+      }
+    }
+
+    if (item.type === COMPONENT_TYPES.LOCAL && isCamelCaseComponent(item.component)) {
+      continue;
+    }
+
+    if (item.type === COMPONENT_TYPES.LOCAL && item.sourceModule) {
+      const key = `${item.file}:::${item.sourceModule}`;
+      if (isLocalImport(item.sourceModule, cfg.aliases) && wrapperLocalImports.has(key)) continue;
+    }
+
+    filtered.push(item);
+  }
 
   const summary: Record<string, number> = {
     [COMPONENT_TYPES.ANTD]: 0,
