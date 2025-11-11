@@ -15,7 +15,7 @@ import type { ClassifiedItem } from '../classifiers/deriveComponentType';
 import type { FileScan } from '../domain/model';
 
 const normSourceLib = (it: ClassifiedItem): 'antd' | 'ksnm-common-ui' | 'local' => {
-  if (it.type === COMPONENT_TYPES.ANTD || it.type === COMPONENT_TYPES.ANTD_WRAPPER) return 'antd';
+  if (it.type === COMPONENT_TYPES.ANTD) return 'antd';
   if (it.type === COMPONENT_TYPES.KSNM) return 'ksnm-common-ui';
   return 'local';
 };
@@ -55,9 +55,8 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
 
     let componentFileRaw = '';
     if (it.type === COMPONENT_TYPES.ANTD) componentFileRaw = 'antd';
-    else if (it.type === COMPONENT_TYPES.ANTD_WRAPPER) componentFileRaw = it.componentFile ?? 'antd';
     else if (it.type === COMPONENT_TYPES.KSNM) componentFileRaw = 'ksnm-common-ui';
-    else componentFileRaw = it.file;
+    else componentFileRaw = it.componentFile ?? it.file;
 
     // 1) прямое попадание файла в индекс страниц (tsx)
     let owner = isPage(it.file);

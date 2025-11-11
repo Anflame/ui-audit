@@ -18,6 +18,8 @@ import { loadConfig as loadCfg, type ResolvedConfig } from '../utils/config';
 import type { ClassifiedReport } from '../classifiers/aggregate';
 import type { ClassifiedItem } from '../classifiers/deriveComponentType';
 
+const WRAPPER_LABEL = 'Обёртка над Ant Design';
+
 const resolveLocalComponent = async (
   cfg: ResolvedConfig,
   fromFile: string,
@@ -102,7 +104,7 @@ const dropNestedWithinWrappers = async (
     if (!file) continue;
     if (!itemsByFile.has(file)) itemsByFile.set(file, []);
     itemsByFile.get(file)?.push(item);
-    if (item.type === COMPONENT_TYPES.ANTD_WRAPPER) {
+    if (item.label === WRAPPER_LABEL) {
       if (!wrappersByFile.has(file)) wrappersByFile.set(file, new Set<string>());
       wrappersByFile.get(file)?.add(item.component);
     }
@@ -198,6 +200,7 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   const commonRoots = computeCommonRoots(cfg);
 
   const wrapperFiles = new Set<string>();
+  const wrapperComponentKeys = new Set<string>();
   const wrappedAntLocalsByFile = new Map<string, Set<string>>();
   const wrapperLocalImports = new Set<string>();
   const resolveCache = new Map<string, string | null>();
@@ -267,10 +270,12 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
               allowedUiLocals,
             );
             if (analysis.verdict === 'wrapper') {
+              const wrapperKey = `${it.file}:::${it.component}`;
+              wrapperComponentKeys.add(wrapperKey);
               const wrapped: ClassifiedItem = {
                 ...it,
-                type: COMPONENT_TYPES.ANTD_WRAPPER,
-                sourceModule: 'antd',
+                type: COMPONENT_TYPES.LOCAL,
+                label: WRAPPER_LABEL,
                 componentFile: resolvedPosix,
               };
               updated.push(wrapped);
@@ -300,7 +305,8 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
       }
     }
 
-    if (item.type === COMPONENT_TYPES.LOCAL && isCamelCaseComponent(item.component)) {
+    const wrapperKey = `${item.file}:::${item.component}`;
+    if (item.type === COMPONENT_TYPES.LOCAL && isCamelCaseComponent(item.component) && !wrapperComponentKeys.has(wrapperKey)) {
       continue;
     }
 
@@ -314,7 +320,6 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
 
   const summary: Record<string, number> = {
     [COMPONENT_TYPES.ANTD]: 0,
-    [COMPONENT_TYPES.ANTD_WRAPPER]: 0,
     [COMPONENT_TYPES.KSNM]: 0,
     [COMPONENT_TYPES.LOCAL]: 0,
   };
