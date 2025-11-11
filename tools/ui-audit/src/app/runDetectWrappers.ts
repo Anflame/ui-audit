@@ -274,7 +274,7 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
               wrapperComponentKeys.add(wrapperKey);
               const wrapped: ClassifiedItem = {
                 ...it,
-                type: COMPONENT_TYPES.LOCAL,
+                type: COMPONENT_TYPES.ANTD,
                 label: WRAPPER_LABEL,
                 componentFile: resolvedPosix,
               };

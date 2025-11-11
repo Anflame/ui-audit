@@ -54,9 +54,13 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
     const lib = normSourceLib(it);
 
     let componentFileRaw = '';
-    if (it.type === COMPONENT_TYPES.ANTD) componentFileRaw = 'antd';
-    else if (it.type === COMPONENT_TYPES.KSNM) componentFileRaw = 'ksnm-common-ui';
-    else componentFileRaw = it.componentFile ?? it.file;
+    if (it.type === COMPONENT_TYPES.ANTD) {
+      componentFileRaw = it.componentFile ?? 'antd';
+    } else if (it.type === COMPONENT_TYPES.KSNM) {
+      componentFileRaw = 'ksnm-common-ui';
+    } else {
+      componentFileRaw = it.componentFile ?? it.file;
+    }
 
     // 1) прямое попадание файла в индекс страниц (tsx)
     let owner = isPage(it.file);
