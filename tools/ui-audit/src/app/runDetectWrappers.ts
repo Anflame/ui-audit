@@ -37,13 +37,17 @@ const computeCommonRoots = (cfg: ResolvedConfig): string[] => {
   }
 
   if (cfg.aliases) {
-    for (const target of Object.values(cfg.aliases)) {
-      const absTarget = path.isAbsolute(target) ? target : path.resolve(cfg.cwd, target);
-      const normalized = toPosixPath(absTarget);
-      const marker = '/components/common';
-      const idx = normalized.indexOf(marker);
-      if (idx !== -1) {
-        roots.add(normalized.slice(0, idx + marker.length));
+    for (const rawTarget of Object.values(cfg.aliases)) {
+      const targets = Array.isArray(rawTarget) ? rawTarget : [rawTarget];
+      for (const target of targets) {
+        if (typeof target !== 'string' || target.length === 0) continue;
+        const absTarget = path.isAbsolute(target) ? target : path.resolve(cfg.cwd, target);
+        const normalized = toPosixPath(absTarget);
+        const marker = '/components/common';
+        const idx = normalized.indexOf(marker);
+        if (idx !== -1) {
+          roots.add(normalized.slice(0, idx + marker.length));
+        }
       }
     }
   }

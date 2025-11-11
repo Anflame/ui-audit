@@ -124,6 +124,16 @@ export const resolveModuleDeep = async (fromFile: string, spec: string): Promise
 const normalizeAliasKey = (alias: string): string => alias.replace(/\/+$/, '');
 const normalizeAliasTarget = (target: string): string => target.replace(/\/+$/, '');
 
+const pickAliasTarget = (raw: string | string[]): string | null => {
+  if (Array.isArray(raw)) {
+    for (const candidate of raw) {
+      if (typeof candidate === 'string' && candidate.length > 0) return candidate;
+    }
+    return null;
+  }
+  return raw ?? null;
+};
+
 const matchAliasPattern = (alias: string, spec: string): { remainder: string } | null => {
   if (!alias.includes('*')) {
     if (spec === alias) return { remainder: '' };
@@ -159,13 +169,15 @@ const applyAliasTarget = (
 
 const computeAliasBase = (
   cwd: string,
-  aliases: Record<string, string> | undefined,
+  aliases: Record<string, string | string[]> | undefined,
   spec: string,
 ): string | null => {
   if (!aliases) return null;
   for (const [rawAlias, rawTarget] of Object.entries(aliases)) {
     const alias = normalizeAliasKey(rawAlias);
-    const target = normalizeAliasTarget(rawTarget);
+    const picked = pickAliasTarget(rawTarget);
+    if (!picked) continue;
+    const target = normalizeAliasTarget(picked);
 
     if (!alias) continue;
     const match = matchAliasPattern(alias, spec);
@@ -178,7 +190,7 @@ const computeAliasBase = (
 
 export const resolveAliasImportPath = async (
   cwd: string,
-  aliases: Record<string, string> | undefined,
+  aliases: Record<string, string | string[]> | undefined,
   spec: string,
 ): Promise<string | null> => {
   const base = computeAliasBase(cwd, aliases, spec);
@@ -188,7 +200,7 @@ export const resolveAliasImportPath = async (
 
 export const resolveAliasModuleDeep = async (
   cwd: string,
-  aliases: Record<string, string> | undefined,
+  aliases: Record<string, string | string[]> | undefined,
   spec: string,
 ): Promise<string | null> => {
   const base = computeAliasBase(cwd, aliases, spec);

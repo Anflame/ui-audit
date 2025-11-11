@@ -21,7 +21,7 @@ export type PageInfo = {
   componentName?: string;
 };
 
-type AliasMap = Record<string, string> | undefined;
+type AliasMap = Record<string, string | string[]> | undefined;
 
 type ImportEntry = {
   local: string;
