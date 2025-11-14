@@ -9,7 +9,7 @@ export type Deps = { parentsOf: Map<string, Set<string>>; childrenOf: Map<string
 export const buildReverseDeps = async (
   cwd: string,
   scans: FileScan[],
-  aliases: Record<string, string> | undefined,
+  aliases: Record<string, string | string[]> | undefined,
 ): Promise<Deps> => {
   const parentsOf = new Map<string, Set<string>>();
   const childrenOf = new Map<string, Set<string>>();

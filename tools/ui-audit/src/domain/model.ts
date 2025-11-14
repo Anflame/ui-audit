@@ -4,7 +4,7 @@ export interface UiAuditConfig {
   projectName: string;
   routerFiles?: string[];
   srcRoots: string[];
-  aliases?: Record<string, string>;
+  aliases?: Record<string, string | string[]>;
   libraries: UiAuditLibraries;
   options?: Record<string, unknown>;
 }

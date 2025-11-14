@@ -9,7 +9,6 @@ export const aggregate = (items: (ClassifiedItem | null)[]): ClassifiedReport =>
   const filtered = items.filter(Boolean) as ClassifiedItem[];
   const summary: Summary = {
     [COMPONENT_TYPES.ANTD]: 0,
-    [COMPONENT_TYPES.ANTD_WRAPPER]: 0,
     [COMPONENT_TYPES.KSNM]: 0,
     [COMPONENT_TYPES.LOCAL]: 0,
   };

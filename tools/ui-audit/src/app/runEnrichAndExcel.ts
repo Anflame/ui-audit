@@ -15,7 +15,7 @@ import type { ClassifiedItem } from '../classifiers/deriveComponentType';
 import type { FileScan } from '../domain/model';
 
 const normSourceLib = (it: ClassifiedItem): 'antd' | 'ksnm-common-ui' | 'local' => {
-  if (it.type === COMPONENT_TYPES.ANTD || it.type === COMPONENT_TYPES.ANTD_WRAPPER) return 'antd';
+  if (it.type === COMPONENT_TYPES.ANTD) return 'antd';
   if (it.type === COMPONENT_TYPES.KSNM) return 'ksnm-common-ui';
   return 'local';
 };
@@ -54,10 +54,13 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
     const lib = normSourceLib(it);
 
     let componentFileRaw = '';
-    if (it.type === COMPONENT_TYPES.ANTD) componentFileRaw = 'antd';
-    else if (it.type === COMPONENT_TYPES.ANTD_WRAPPER) componentFileRaw = it.componentFile ?? 'antd';
-    else if (it.type === COMPONENT_TYPES.KSNM) componentFileRaw = 'ksnm-common-ui';
-    else componentFileRaw = it.file;
+    if (it.type === COMPONENT_TYPES.ANTD) {
+      componentFileRaw = it.componentFile ?? 'antd';
+    } else if (it.type === COMPONENT_TYPES.KSNM) {
+      componentFileRaw = 'ksnm-common-ui';
+    } else {
+      componentFileRaw = it.componentFile ?? it.file;
+    }
 
     // 1) прямое попадание файла в индекс страниц (tsx)
     let owner = isPage(it.file);
@@ -70,16 +73,20 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
         ? componentFileRaw
         : toRelative(componentFileRaw) ?? componentFileRaw;
 
-    details.push({
-      pageTitle: owner?.pageTitle,
-      pageFile: toRelative(owner?.pageFilePath),
-      route: formatRoute(owner?.pageRoute),
-      uiComponent: it.component,
-      componentFile,
-      label: it.label,
-      sourceLib: lib,
-      type: it.type,
-    });
+    const usageCount = Math.max(1, it.count ?? 1);
+    for (let idx = 0; idx < usageCount; idx += 1) {
+      details.push({
+        pageTitle: owner?.pageTitle,
+        pageFile: toRelative(owner?.pageFilePath),
+        route: formatRoute(owner?.pageRoute),
+        uiComponent: it.component,
+        componentFile,
+        label: it.label,
+        sourceLib: lib,
+        type: it.type,
+        usageIndex: usageCount > 1 ? idx + 1 : undefined,
+      });
+    }
   }
 
   details.sort((a, b) => {
