@@ -14,6 +14,7 @@ export type DetailRow = {
   label?: string;
   sourceLib: 'antd' | 'ksnm-common-ui' | 'local';
   type: string;
+  usageIndex?: number;
 };
 
 const norm = (v: string | undefined | null): string => (v && String(v).trim() ? String(v) : 'нет');
@@ -45,6 +46,7 @@ export const writeExcel = async (
     'UI компонент',
     'Файл компонента',
     'Лейбл',
+    'Использование',
     'Библиотека — источник',
     'Тип компонента',
   ]);
@@ -56,6 +58,7 @@ export const writeExcel = async (
       r.uiComponent,
       r.componentFile,
       norm(r.label),
+      r.usageIndex ?? 1,
       r.sourceLib,
       r.type,
     ]);
@@ -66,6 +69,7 @@ export const writeExcel = async (
     { width: 30 },
     { width: 60 },
     { width: 40 },
+    { width: 15 },
     { width: 25 },
     { width: 25 },
   ];

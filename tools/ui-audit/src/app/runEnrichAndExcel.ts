@@ -73,16 +73,20 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
         ? componentFileRaw
         : toRelative(componentFileRaw) ?? componentFileRaw;
 
-    details.push({
-      pageTitle: owner?.pageTitle,
-      pageFile: toRelative(owner?.pageFilePath),
-      route: formatRoute(owner?.pageRoute),
-      uiComponent: it.component,
-      componentFile,
-      label: it.label,
-      sourceLib: lib,
-      type: it.type,
-    });
+    const usageCount = Math.max(1, it.count ?? 1);
+    for (let idx = 0; idx < usageCount; idx += 1) {
+      details.push({
+        pageTitle: owner?.pageTitle,
+        pageFile: toRelative(owner?.pageFilePath),
+        route: formatRoute(owner?.pageRoute),
+        uiComponent: it.component,
+        componentFile,
+        label: it.label,
+        sourceLib: lib,
+        type: it.type,
+        usageIndex: usageCount > 1 ? idx + 1 : undefined,
+      });
+    }
   }
 
   details.sort((a, b) => {
