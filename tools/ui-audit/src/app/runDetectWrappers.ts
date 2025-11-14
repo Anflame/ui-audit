@@ -1,6 +1,5 @@
 import path from 'node:path';
 
-// @ts-expect-error: typings for @babel/traverse are not available in this package
 import traverse, { type NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 import fs from 'fs-extra';

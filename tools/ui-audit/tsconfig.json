@@ -3,11 +3,16 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@babel/traverse": ["./src/types/babel__traverse/index.d.ts"]
+    },
     "outDir": "dist",
     "declaration": true,
     "strict": true,
     "skipLibCheck": true,
-    "typeRoots": ["./src/types", "./node_modules/@types"]
+    "typeRoots": ["./src/types", "./node_modules/@types"],
+    "types": ["babel__traverse"]
   },
   "include": ["src"]
 }

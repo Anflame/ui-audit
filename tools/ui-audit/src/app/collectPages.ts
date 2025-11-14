@@ -102,7 +102,7 @@ const getPropertyName = (key: t.Expression | t.PrivateName): string | null => {
   return null;
 };
 
-const isLazyCallee = (node: t.Expression): boolean => {
+const isLazyCallee = (node: t.Expression | t.Super | t.V8IntrinsicIdentifier): boolean => {
   if (t.isIdentifier(node)) return node.name === 'lazy';
   if (t.isMemberExpression(node) && t.isIdentifier(node.property)) {
     return node.property.name === 'lazy';
@@ -229,13 +229,10 @@ const analyzeModule = async (filePath: string, parser: ParserBabel): Promise<Mod
             const lazyImport = extractLazyImportPath(value);
             if (lazyImport) lazyComponents.set(d.id.name, { importPath: lazyImport });
           }
-        } else if (decl && t.isIdentifier(decl)) {
-          const existing = definitions.get(decl.name);
-          if (existing) exports.set(decl.name, existing);
         }
 
         for (const spec of p.node.specifiers) {
-          if (!t.isIdentifier(spec.local) && !t.isStringLiteral(spec.local)) continue;
+          if (!t.isExportSpecifier(spec)) continue;
           const local = t.isIdentifier(spec.local) ? spec.local.name : spec.local.value;
           const exported = t.isIdentifier(spec.exported) ? spec.exported.name : spec.exported.value;
 

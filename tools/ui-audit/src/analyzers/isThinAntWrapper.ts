@@ -58,6 +58,7 @@ const classifyJsxChildren = (
       );
       mergeScan(acc, res);
     } else if (t.isJSXExpressionContainer(child)) {
+      if (t.isJSXEmptyExpression(child.expression)) continue;
       const res = classifyExpression(child.expression, antdLocals, allowedWrapperLocals, allowedUiLocals, nextDepth);
       mergeScan(acc, res);
     } else if (t.isJSXText(child)) {
@@ -260,20 +261,28 @@ const evaluateFunctionBody = (
     for (const name of res.wrapped) wrapped.add(name);
   };
 
-  if (fnPath.isArrowFunctionExpression() && !fnPath.get('body').isBlockStatement()) {
-    consider(fnPath.node.body);
-  } else {
-    fnPath.traverse({
-      ReturnStatement(retPath) {
-        if (retPath.getFunctionParent() !== fnPath) return;
-        consider(retPath.node.argument ?? null);
-      },
-    });
+  const finalize = (): WrapperVerdict => {
+    if (sawForeign) return { verdict: 'reject', wrappedLocals: new Set<string>() };
+    if (sawAnt) return { verdict: 'wrapper', wrappedLocals: wrapped };
+    return { verdict: 'unknown', wrappedLocals: new Set<string>() };
+  };
+
+  if (fnPath.isArrowFunctionExpression()) {
+    const body = fnPath.node.body;
+    if (!t.isBlockStatement(body)) {
+      consider(body);
+      return finalize();
+    }
   }
 
-  if (sawForeign) return { verdict: 'reject', wrappedLocals: new Set<string>() };
-  if (sawAnt) return { verdict: 'wrapper', wrappedLocals: wrapped };
-  return { verdict: 'unknown', wrappedLocals: new Set<string>() };
+  fnPath.traverse({
+    ReturnStatement(retPath) {
+      if (retPath.getFunctionParent() !== fnPath) return;
+      consider(retPath.node.argument ?? null);
+    },
+  });
+
+  return finalize();
 };
 
 const evaluateInitializer = (
