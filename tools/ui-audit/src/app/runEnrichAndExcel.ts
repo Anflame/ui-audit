@@ -8,7 +8,7 @@ import { writeExcel, type DetailRow } from '../report/excel';
 import { loadConfig as loadCfg } from '../utils/config';
 
 import { buildPagesIndex, type PageInfo } from './collectPages';
-import { buildReverseDeps, findOwningPage } from './depsGraph';
+import { buildReverseDeps, findOwningPages } from './depsGraph';
 
 import type { ClassifiedReport } from '../classifiers/aggregate';
 import type { ClassifiedItem } from '../classifiers/deriveComponentType';
@@ -63,10 +63,12 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
     }
 
     // 1) прямое попадание файла в индекс страниц (tsx)
-    let owner = isPage(it.file);
+    const owners: PageInfo[] = [];
+    const direct = isPage(it.file);
+    if (direct) owners.push(direct);
 
-    // 2) если нет — ищем через обратные зависимости (поднимемся до barrel/index.ts, который есть в pages)
-    if (!owner) owner = findOwningPage(it.file, pages, deps);
+    // 2) если нет прямого попадания — ищем через обратные зависимости (поднимемся до barrel/index.ts, который есть в pages)
+    if (!direct) owners.push(...findOwningPages(it.file, pages, deps));
 
     const componentFile =
       componentFileRaw === 'antd' || componentFileRaw === 'ksnm-common-ui'
@@ -74,18 +76,22 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
         : toRelative(componentFileRaw) ?? componentFileRaw;
 
     const usageCount = Math.max(1, it.count ?? 1);
-    for (let idx = 0; idx < usageCount; idx += 1) {
-      details.push({
-        pageTitle: owner?.pageTitle,
-        pageFile: toRelative(owner?.pageFilePath),
-        route: formatRoute(owner?.pageRoute),
-        uiComponent: it.component,
-        componentFile,
-        label: it.label,
-        sourceLib: lib,
-        type: it.type,
-        usageIndex: usageCount > 1 ? idx + 1 : undefined,
-      });
+    const targets = owners.length > 0 ? owners : [undefined];
+
+    for (const owner of targets) {
+      for (let idx = 0; idx < usageCount; idx += 1) {
+        details.push({
+          pageTitle: owner?.pageTitle,
+          pageFile: toRelative(owner?.pageFilePath),
+          route: formatRoute(owner?.pageRoute),
+          uiComponent: it.component,
+          componentFile,
+          label: it.label,
+          sourceLib: lib,
+          type: it.type,
+          usageIndex: usageCount > 1 ? idx + 1 : undefined,
+        });
+      }
     }
   }
 
