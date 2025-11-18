@@ -2,7 +2,13 @@ import { INTRINSIC_HTML, isInteractiveIntrinsic } from '../domain/constants';
 
 import type { FileScan, ImportInfo } from '../domain/model';
 
-export type JsxUsage = { element: string; count: number; import?: ImportInfo | null; label?: string };
+export type JsxUsage = {
+  element: string;
+  count: number;
+  import?: ImportInfo | null;
+  label?: string;
+  isInteractiveIntrinsic?: boolean;
+};
 
 export const mapJsxToImports = (scan: FileScan): JsxUsage[] => {
   const counter = new Map<string, number>();
@@ -13,11 +19,13 @@ export const mapJsxToImports = (scan: FileScan): JsxUsage[] => {
 
   const result: JsxUsage[] = [];
   const labelMap: Record<string, string> = scan.labelMap ?? {};
+  const flaggedInteractive = new Set(scan.interactiveIntrinsics ?? []);
 
   for (const [el, count] of counter.entries()) {
     if (INTRINSIC_HTML.has(el)) {
-      if (!isInteractiveIntrinsic(el)) continue; // пропускаем div/span/…
-      result.push({ element: el, count, import: null, label: labelMap[el] });
+      const interactive = isInteractiveIntrinsic(el) || flaggedInteractive.has(el);
+      if (!interactive) continue; // пропускаем div/span/…
+      result.push({ element: el, count, import: null, label: labelMap[el], isInteractiveIntrinsic: interactive });
       continue;
     }
 

@@ -202,6 +202,7 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   const wrapperComponentKeys = new Set<string>();
   const wrappedAntLocalsByFile = new Map<string, Set<string>>();
   const wrapperLocalImports = new Set<string>();
+  const uiLocalComponentKeys = new Set<string>();
   const resolveCache = new Map<string, string | null>();
 
   const resolveWithCache = async (fromFile: string, spec: string): Promise<string | null> => {
@@ -218,75 +219,79 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
       if (!isInteractiveIntrinsic(it.component)) continue;
     }
 
-    if (
-      it.type === COMPONENT_TYPES.LOCAL &&
-      it.sourceModule &&
-      isCamelCaseComponent(it.component) &&
-      isLocalImport(it.sourceModule, cfg.aliases)
-    ) {
-      // ГЛУБОКИЙ резолв (баррели/index.ts), чтобы точно дойти до файла компонента
-      const resolved = await resolveWithCache(it.file, it.sourceModule);
+    const wrapperKey = `${it.file}:::${it.component}`;
+    let resolvedPosix: string | null = null;
+    const shouldResolveLocal =
+      it.type === COMPONENT_TYPES.LOCAL && it.sourceModule && isCamelCaseComponent(it.component);
+
+    if (shouldResolveLocal && isLocalImport(it.sourceModule!, cfg.aliases)) {
+      const resolved = await resolveWithCache(it.file, it.sourceModule!);
       if (resolved) {
-        const resolvedPosix = toPosixPath(resolved);
-        try {
-          const stat = await fs.stat(resolvedPosix);
-          if (!stat.isFile()) throw new Error('resolved path is not a file');
-
-          const code = await fs.readFile(resolvedPosix, 'utf8');
-          const ast = parser.parse(code) as unknown as t.File;
-          const { antdLocals, moduleByLocal } = collectImportsSet(ast);
-          const allowedWrapperLocals = new Set<string>();
-          const allowedUiLocals = new Set<string>();
-
-          const allowedLibraryModules = new Set<string>();
-          for (const [group, modules] of Object.entries(cfg.libraries ?? {})) {
-            if (group === 'antd') continue;
-            for (const mod of modules) allowedLibraryModules.add(mod);
-          }
-
-          for (const [localName, source] of moduleByLocal.entries()) {
-            if (!isLocalImport(source, cfg.aliases)) continue;
-            const dep = await resolveWithCache(resolvedPosix, source);
-            if (!dep) continue;
-            if (isWithinCommon(dep, commonRoots)) allowedWrapperLocals.add(localName);
-          }
-
-          for (const [localName, source] of moduleByLocal.entries()) {
-            for (const mod of allowedLibraryModules) {
-              if (source === mod || source.startsWith(`${mod}/`)) {
-                allowedUiLocals.add(localName);
-                break;
-              }
-            }
-          }
-
-          if (antdLocals.size > 0 && hasAntdJsxUsage(ast, antdLocals)) {
-            const analysis = analyzeThinAntWrapper(
-              ast,
-              it.component,
-              antdLocals,
-              allowedWrapperLocals,
-              allowedUiLocals,
-            );
-            if (analysis.verdict === 'wrapper') {
-              const wrapperKey = `${it.file}:::${it.component}`;
-              wrapperComponentKeys.add(wrapperKey);
-              const wrapped: ClassifiedItem = {
-                ...it,
-                type: COMPONENT_TYPES.ANTD,
-                label: WRAPPER_LABEL,
-                componentFile: resolvedPosix,
-              };
-              updated.push(wrapped);
-              wrapperFiles.add(resolvedPosix);
-              wrappedAntLocalsByFile.set(resolvedPosix, new Set(analysis.wrappedLocals));
-              if (it.sourceModule) wrapperLocalImports.add(`${it.file}:::${it.sourceModule}`);
-              continue;
-            }
-          }
-        } catch {
-          // оставляем как есть
+        resolvedPosix = toPosixPath(resolved);
+        if (isWithinCommon(resolvedPosix, commonRoots)) {
+          uiLocalComponentKeys.add(wrapperKey);
         }
+      }
+    }
+
+    if (shouldResolveLocal && resolvedPosix) {
+      try {
+        const stat = await fs.stat(resolvedPosix);
+        if (!stat.isFile()) throw new Error('resolved path is not a file');
+
+        const code = await fs.readFile(resolvedPosix, 'utf8');
+        const ast = parser.parse(code) as unknown as t.File;
+        const { antdLocals, moduleByLocal } = collectImportsSet(ast);
+        const allowedWrapperLocals = new Set<string>();
+        const allowedUiLocals = new Set<string>();
+
+        const allowedLibraryModules = new Set<string>();
+        for (const [group, modules] of Object.entries(cfg.libraries ?? {})) {
+          if (group === 'antd') continue;
+          for (const mod of modules) allowedLibraryModules.add(mod);
+        }
+
+        for (const [localName, source] of moduleByLocal.entries()) {
+          if (!isLocalImport(source, cfg.aliases)) continue;
+          const dep = await resolveWithCache(resolvedPosix, source);
+          if (!dep) continue;
+          if (isWithinCommon(dep, commonRoots)) allowedWrapperLocals.add(localName);
+        }
+
+        for (const [localName, source] of moduleByLocal.entries()) {
+          for (const mod of allowedLibraryModules) {
+            if (source === mod || source.startsWith(`${mod}/`)) {
+              allowedUiLocals.add(localName);
+              break;
+            }
+          }
+        }
+
+        if (antdLocals.size > 0 && hasAntdJsxUsage(ast, antdLocals)) {
+          const analysis = analyzeThinAntWrapper(
+            ast,
+            it.component,
+            antdLocals,
+            allowedWrapperLocals,
+            allowedUiLocals,
+          );
+          if (analysis.verdict === 'wrapper') {
+            wrapperComponentKeys.add(wrapperKey);
+            const wrapped: ClassifiedItem = {
+              ...it,
+              type: COMPONENT_TYPES.ANTD,
+              label: WRAPPER_LABEL,
+              componentFile: resolvedPosix,
+            };
+            updated.push(wrapped);
+            wrapperFiles.add(resolvedPosix);
+            wrappedAntLocalsByFile.set(resolvedPosix, new Set(analysis.wrappedLocals));
+            if (it.sourceModule) wrapperLocalImports.add(`${it.file}:::${it.sourceModule}`);
+            continue;
+          }
+        }
+      } catch {
+        // оставляем как есть
       }
     }
     updated.push(it);
@@ -305,13 +310,26 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
     }
 
     const wrapperKey = `${item.file}:::${item.component}`;
-    if (item.type === COMPONENT_TYPES.LOCAL && isCamelCaseComponent(item.component) && !wrapperComponentKeys.has(wrapperKey)) {
-      continue;
-    }
+    if (item.type === COMPONENT_TYPES.LOCAL && isCamelCaseComponent(item.component)) {
+      if (wrapperComponentKeys.has(wrapperKey) || uiLocalComponentKeys.has(wrapperKey)) {
+        filtered.push(item);
+        continue;
+      }
 
-    if (item.type === COMPONENT_TYPES.LOCAL && item.sourceModule) {
-      const key = `${item.file}:::${item.sourceModule}`;
-      if (isLocalImport(item.sourceModule, cfg.aliases) && wrapperLocalImports.has(key)) continue;
+      let resolvedPosix: string | null = null;
+      if (item.sourceModule && isLocalImport(item.sourceModule, cfg.aliases)) {
+        const resolved = await resolveWithCache(item.file, item.sourceModule);
+        if (resolved) resolvedPosix = toPosixPath(resolved);
+      }
+      if (resolvedPosix && isWithinCommon(resolvedPosix, commonRoots)) {
+        filtered.push(item);
+        continue;
+      }
+
+      const key = item.sourceModule ? `${item.file}:::${item.sourceModule}` : null;
+      if (key && isLocalImport(item.sourceModule!, cfg.aliases) && wrapperLocalImports.has(key)) continue;
+
+      continue;
     }
 
     filtered.push(item);
