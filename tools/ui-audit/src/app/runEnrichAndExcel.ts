@@ -7,6 +7,7 @@ import { COMPONENT_TYPES } from '../domain/constants';
 import { WRAPPER_LABEL } from './runDetectWrappers';
 import { writeExcel, type DetailRow } from '../report/excel';
 import { loadConfig as loadCfg } from '../utils/config';
+import { resolveAliasImportPath, resolveImportPath } from '../utils/resolveModule';
 
 import { buildPagesIndex, type PageInfo } from './collectPages';
 import { buildReverseDeps, findOwningPages } from './depsGraph';
@@ -28,6 +29,28 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
 
   const s1 = (await fs.readJSON(s1Path)) as { scans: FileScan[] };
   const final = (await fs.readJSON(s3Path)) as ClassifiedReport;
+
+  // Позволяет восстановить путь до файла компонента при выводе деталей
+  const scanByFile = new Map<string, FileScan>();
+  for (const scan of s1.scans) scanByFile.set(scan.file.replace(/\\/g, '/'), scan);
+
+  const resolveComponentFile = async (it: ClassifiedItem): Promise<string | null> => {
+    const scan = scanByFile.get(it.file);
+    let source = it.sourceModule;
+
+    if (!source && scan) {
+      const match = scan.imports.find((im) => im.localName === it.component);
+      if (match) source = match.source;
+    }
+
+    if (!source) return null;
+
+    if (source.startsWith('./') || source.startsWith('../')) {
+      return resolveImportPath(it.file, source);
+    }
+
+    return resolveAliasImportPath(cfg.cwd, cfg.aliases, source);
+  };
 
   const deps = await buildReverseDeps(cwd, s1.scans, cfg.aliases);
 
@@ -54,13 +77,15 @@ export const runEnrichAndExcel = async (cwd: string = process.cwd()) => {
   for (const it of final.items) {
     const lib = normSourceLib(it);
 
+    const resolvedPath = await resolveComponentFile(it);
+
     let componentFileRaw = '';
-    if (it.type === COMPONENT_TYPES.ANTD) {
-      componentFileRaw = it.componentFile ?? 'antd';
-    } else if (it.type === COMPONENT_TYPES.KSNM) {
+    if (lib === 'antd-wrapped' || lib === 'antd') {
+      componentFileRaw = it.componentFile ?? resolvedPath ?? it.sourceModule ?? 'antd';
+    } else if (lib === 'ksnm-common-ui') {
       componentFileRaw = 'ksnm-common-ui';
     } else {
-      componentFileRaw = it.componentFile ?? it.file;
+      componentFileRaw = it.componentFile ?? resolvedPath ?? it.file;
     }
 
     // 1) прямое попадание файла в индекс страниц (tsx)
