@@ -1,12 +1,13 @@
 import path from 'node:path';
 
+import traverse, { type NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 import fs from 'fs-extra';
 
 import { ParserBabel } from '../adapters/parserBabel';
 import { collectImportsSet } from '../analyzers/collectImportsSet';
 import { hasAntdJsxUsage } from '../analyzers/hasAntdJsxUsage';
-import { isThinAntWrapper } from '../analyzers/isThinAntWrapper';
+import { analyzeThinAntWrapper } from '../analyzers/isThinAntWrapper';
 import { COMPONENT_TYPES, isCamelCaseComponent, isInteractiveIntrinsic } from '../domain/constants';
 import { resolveAliasModuleDeep, resolveModuleDeep } from '../utils/resolveModule';
 import { toPosixPath } from '../utils/normalizePath';
@@ -15,6 +16,8 @@ import { loadConfig as loadCfg, type ResolvedConfig } from '../utils/config';
 
 import type { ClassifiedReport } from '../classifiers/aggregate';
 import type { ClassifiedItem } from '../classifiers/deriveComponentType';
+
+export const WRAPPER_LABEL = 'Обёртка над Ant Design';
 
 const resolveLocalComponent = async (
   cfg: ResolvedConfig,
@@ -35,13 +38,17 @@ const computeCommonRoots = (cfg: ResolvedConfig): string[] => {
   }
 
   if (cfg.aliases) {
-    for (const target of Object.values(cfg.aliases)) {
-      const absTarget = path.isAbsolute(target) ? target : path.resolve(cfg.cwd, target);
-      const normalized = toPosixPath(absTarget);
-      const marker = '/components/common';
-      const idx = normalized.indexOf(marker);
-      if (idx !== -1) {
-        roots.add(normalized.slice(0, idx + marker.length));
+    for (const rawTarget of Object.values(cfg.aliases)) {
+      const targets = Array.isArray(rawTarget) ? rawTarget : [rawTarget];
+      for (const target of targets) {
+        if (typeof target !== 'string' || target.length === 0) continue;
+        const absTarget = path.isAbsolute(target) ? target : path.resolve(cfg.cwd, target);
+        const normalized = toPosixPath(absTarget);
+        const marker = '/components/common';
+        const idx = normalized.indexOf(marker);
+        if (idx !== -1) {
+          roots.add(normalized.slice(0, idx + marker.length));
+        }
       }
     }
   }
@@ -57,6 +64,130 @@ const isWithinCommon = (filePath: string, roots: string[]): boolean => {
   return false;
 };
 
+const getJsxElementName = (
+  name: t.JSXIdentifier | t.JSXMemberExpression | t.JSXNamespacedName,
+): string | null => {
+  if (t.isJSXIdentifier(name)) return name.name;
+  if (t.isJSXMemberExpression(name)) {
+    const resolveMember = (expr: t.JSXMemberExpression): string => {
+      const left = t.isJSXIdentifier(expr.object)
+        ? expr.object.name
+        : t.isJSXMemberExpression(expr.object)
+          ? resolveMember(expr.object)
+          : '';
+      const right = t.isJSXIdentifier(expr.property) ? expr.property.name : '';
+      if (left && right) return `${left}.${right}`;
+      return right || left || '';
+    };
+    const res = resolveMember(name);
+    return res || null;
+  }
+  if (t.isJSXNamespacedName(name)) {
+    const ns = t.isJSXIdentifier(name.namespace) ? name.namespace.name : '';
+    const local = t.isJSXIdentifier(name.name) ? name.name.name : '';
+    if (ns && local) return `${ns}:${local}`;
+    return local || ns || null;
+  }
+  return null;
+};
+
+const dropNestedWithinWrappers = async (
+  parser: ParserBabel,
+  items: ClassifiedItem[],
+): Promise<ClassifiedItem[]> => {
+  const wrappersByFile = new Map<string, Set<string>>();
+  const itemsByFile = new Map<string, ClassifiedItem[]>();
+
+  for (const item of items) {
+    const file = item.file;
+    if (!file) continue;
+    if (!itemsByFile.has(file)) itemsByFile.set(file, []);
+    itemsByFile.get(file)?.push(item);
+    if (item.label === WRAPPER_LABEL) {
+      if (!wrappersByFile.has(file)) wrappersByFile.set(file, new Set<string>());
+      wrappersByFile.get(file)?.add(item.component);
+    }
+  }
+
+  if (wrappersByFile.size === 0) return items;
+
+  const astCache = new Map<string, t.File | null>();
+  const getAst = async (file: string): Promise<t.File | null> => {
+    if (astCache.has(file)) return astCache.get(file) ?? null;
+    try {
+      const code = await fs.readFile(file, 'utf8');
+      const ast = parser.parse(code) as unknown as t.File;
+      astCache.set(file, ast);
+      return ast;
+    } catch {
+      astCache.set(file, null);
+      return null;
+    }
+  };
+
+  const dropsByFile = new Map<string, Map<string, number>>();
+
+  for (const [file, wrappers] of wrappersByFile.entries()) {
+    if (!file || wrappers.size === 0) continue;
+    const fileItems = itemsByFile.get(file);
+    if (!fileItems || fileItems.length === 0) continue;
+
+    const tracked = new Set<string>(fileItems.map((it) => it.component));
+
+    const ast = await getAst(file);
+    if (!ast) continue;
+
+    const stack: string[] = [];
+    const counters = new Map<string, number>();
+
+    traverse(ast, {
+      JSXElement: {
+        enter(path: NodePath<t.JSXElement>) {
+          const name = getJsxElementName(path.node.openingElement.name);
+          if (!name) return;
+          if (stack.length > 0 && tracked.has(name) && !wrappers.has(name)) {
+            counters.set(name, (counters.get(name) ?? 0) + 1);
+          }
+          if (wrappers.has(name)) stack.push(name);
+        },
+        exit(path: NodePath<t.JSXElement>) {
+          const name = getJsxElementName(path.node.openingElement.name);
+          if (!name) return;
+          if (wrappers.has(name)) stack.pop();
+        },
+      },
+    });
+
+    if (counters.size > 0) dropsByFile.set(file, counters);
+  }
+
+  if (dropsByFile.size === 0) return items;
+
+  const trimmed: ClassifiedItem[] = [];
+  for (const item of items) {
+    const file = item.file;
+    if (!file) {
+      trimmed.push(item);
+      continue;
+    }
+    const counters = dropsByFile.get(file);
+    if (!counters) {
+      trimmed.push(item);
+      continue;
+    }
+    const drop = counters.get(item.component);
+    if (!drop) {
+      trimmed.push(item);
+      continue;
+    }
+    const remaining = (item.count ?? 0) - drop;
+    if (remaining <= 0) continue;
+    trimmed.push({ ...item, count: remaining });
+  }
+
+  return trimmed;
+};
+
 export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   const parser = new ParserBabel();
   const stage2Path = path.join(cwd, '.ui-audit', 'tmp', 'classified.json');
@@ -68,6 +199,10 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
   const commonRoots = computeCommonRoots(cfg);
 
   const wrapperFiles = new Set<string>();
+  const wrapperComponentKeys = new Set<string>();
+  const wrappedAntLocalsByFile = new Map<string, Set<string>>();
+  const wrapperLocalImports = new Set<string>();
+  const uiLocalComponentKeys = new Set<string>();
   const resolveCache = new Map<string, string | null>();
 
   const resolveWithCache = async (fromFile: string, spec: string): Promise<string | null> => {
@@ -84,70 +219,124 @@ export const runDetectWrappers = async (cwd: string = process.cwd()) => {
       if (!isInteractiveIntrinsic(it.component)) continue;
     }
 
-    if (
-      it.type === COMPONENT_TYPES.LOCAL &&
-      it.sourceModule &&
-      isCamelCaseComponent(it.component) &&
-      isLocalImport(it.sourceModule, cfg.aliases)
-    ) {
-      // ГЛУБОКИЙ резолв (баррели/index.ts), чтобы точно дойти до файла компонента
-      const resolved = await resolveWithCache(it.file, it.sourceModule);
+    const wrapperKey = `${it.file}:::${it.component}`;
+    let resolvedPosix: string | null = null;
+    const shouldResolveLocal =
+      it.type === COMPONENT_TYPES.LOCAL && it.sourceModule && isCamelCaseComponent(it.component);
+
+    if (shouldResolveLocal && isLocalImport(it.sourceModule!, cfg.aliases)) {
+      const resolved = await resolveWithCache(it.file, it.sourceModule!);
       if (resolved) {
-        const resolvedPosix = toPosixPath(resolved);
-        try {
-          const stat = await fs.stat(resolvedPosix);
-          if (!stat.isFile()) throw new Error('resolved path is not a file');
+        resolvedPosix = toPosixPath(resolved);
+        if (isWithinCommon(resolvedPosix, commonRoots)) {
+          uiLocalComponentKeys.add(wrapperKey);
+        }
+      }
+    }
 
-          const code = await fs.readFile(resolvedPosix, 'utf8');
-          const ast = parser.parse(code) as unknown as t.File;
-          const { antdLocals, moduleByLocal } = collectImportsSet(ast);
-          let allowedWrapperLocals = new Set<string>();
+    if (shouldResolveLocal && resolvedPosix) {
+      try {
+        const stat = await fs.stat(resolvedPosix);
+        if (!stat.isFile()) throw new Error('resolved path is not a file');
 
-          if (isWithinCommon(resolvedPosix, commonRoots)) {
-            allowedWrapperLocals = new Set<string>();
-            for (const [localName, source] of moduleByLocal.entries()) {
-              if (!isLocalImport(source, cfg.aliases)) continue;
-              const dep = await resolveWithCache(resolvedPosix, source);
-              if (!dep) continue;
-              if (isWithinCommon(dep, commonRoots)) allowedWrapperLocals.add(localName);
+        const code = await fs.readFile(resolvedPosix, 'utf8');
+        const ast = parser.parse(code) as unknown as t.File;
+        const { antdLocals, moduleByLocal } = collectImportsSet(ast);
+        const allowedWrapperLocals = new Set<string>();
+        const allowedUiLocals = new Set<string>();
+
+        const allowedLibraryModules = new Set<string>();
+        for (const [group, modules] of Object.entries(cfg.libraries ?? {})) {
+          if (group === 'antd') continue;
+          for (const mod of modules) allowedLibraryModules.add(mod);
+        }
+
+        for (const [localName, source] of moduleByLocal.entries()) {
+          if (!isLocalImport(source, cfg.aliases)) continue;
+          const dep = await resolveWithCache(resolvedPosix, source);
+          if (!dep) continue;
+          if (isWithinCommon(dep, commonRoots)) allowedWrapperLocals.add(localName);
+        }
+
+        for (const [localName, source] of moduleByLocal.entries()) {
+          for (const mod of allowedLibraryModules) {
+            if (source === mod || source.startsWith(`${mod}/`)) {
+              allowedUiLocals.add(localName);
+              break;
             }
           }
+        }
 
-          if (
-            antdLocals.size > 0 &&
-            hasAntdJsxUsage(ast, antdLocals) &&
-            isThinAntWrapper(ast, it.component, antdLocals, allowedWrapperLocals)
-          ) {
+        if (antdLocals.size > 0 && hasAntdJsxUsage(ast, antdLocals)) {
+          const analysis = analyzeThinAntWrapper(
+            ast,
+            it.component,
+            antdLocals,
+            allowedWrapperLocals,
+            allowedUiLocals,
+          );
+          if (analysis.verdict === 'wrapper') {
+            wrapperComponentKeys.add(wrapperKey);
             const wrapped: ClassifiedItem = {
               ...it,
-              type: COMPONENT_TYPES.ANTD_WRAPPER,
-              sourceModule: 'antd',
+              type: COMPONENT_TYPES.ANTD,
+              label: WRAPPER_LABEL,
               componentFile: resolvedPosix,
             };
             updated.push(wrapped);
             wrapperFiles.add(resolvedPosix);
+            wrappedAntLocalsByFile.set(resolvedPosix, new Set(analysis.wrappedLocals));
+            if (it.sourceModule) wrapperLocalImports.add(`${it.file}:::${it.sourceModule}`);
             continue;
           }
-        } catch {
-          // оставляем как есть
         }
+      } catch {
+        // оставляем как есть
       }
     }
     updated.push(it);
   }
 
-  // вырезаем прямых «детей antd» внутри самих файлов-обёрток
-  const filtered = updated
-    .filter((x) => !(x.type === COMPONENT_TYPES.ANTD && x.file && wrapperFiles.has(x.file)))
-    .filter((x) => {
-      if (x.type !== COMPONENT_TYPES.LOCAL) return true;
-      if (!x.sourceModule) return true;
-      return !isLocalImport(x.sourceModule, cfg.aliases);
-    });
+  const pruned = await dropNestedWithinWrappers(parser, updated);
+
+  const filtered: ClassifiedItem[] = [];
+  for (const item of pruned) {
+    if (item.type === COMPONENT_TYPES.ANTD && item.file && wrapperFiles.has(item.file)) {
+      const wrappedLocals = wrappedAntLocalsByFile.get(item.file);
+      if (wrappedLocals && wrappedLocals.size > 0) {
+        const base = item.component.includes('.') ? item.component.split('.')[0] ?? item.component : item.component;
+        if (wrappedLocals.has(base)) continue;
+      }
+    }
+
+    const wrapperKey = `${item.file}:::${item.component}`;
+    if (item.type === COMPONENT_TYPES.LOCAL && isCamelCaseComponent(item.component)) {
+      if (wrapperComponentKeys.has(wrapperKey) || uiLocalComponentKeys.has(wrapperKey)) {
+        filtered.push(item);
+        continue;
+      }
+
+      let resolvedPosix: string | null = null;
+      if (item.sourceModule && isLocalImport(item.sourceModule, cfg.aliases)) {
+        const resolved = await resolveWithCache(item.file, item.sourceModule);
+        if (resolved) resolvedPosix = toPosixPath(resolved);
+      }
+      if (resolvedPosix && isWithinCommon(resolvedPosix, commonRoots)) {
+        filtered.push(item);
+        continue;
+      }
+
+      const key = item.sourceModule ? `${item.file}:::${item.sourceModule}` : null;
+      if (key && isLocalImport(item.sourceModule!, cfg.aliases) && wrapperLocalImports.has(key)) continue;
+
+      continue;
+    }
+
+    filtered.push(item);
+  }
 
   const summary: Record<string, number> = {
     [COMPONENT_TYPES.ANTD]: 0,
-    [COMPONENT_TYPES.ANTD_WRAPPER]: 0,
     [COMPONENT_TYPES.KSNM]: 0,
     [COMPONENT_TYPES.LOCAL]: 0,
   };
