@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'fs-extra';
 
 import { COMPONENT_TYPES } from '../domain/constants';
+import { WRAPPER_LABEL } from './runDetectWrappers';
 import { writeExcel, type DetailRow } from '../report/excel';
 import { loadConfig as loadCfg } from '../utils/config';
 
@@ -14,8 +15,8 @@ import type { ClassifiedReport } from '../classifiers/aggregate';
 import type { ClassifiedItem } from '../classifiers/deriveComponentType';
 import type { FileScan } from '../domain/model';
 
-const normSourceLib = (it: ClassifiedItem): 'antd' | 'ksnm-common-ui' | 'local' => {
-  if (it.type === COMPONENT_TYPES.ANTD) return 'antd';
+const normSourceLib = (it: ClassifiedItem): 'antd' | 'antd-wrapped' | 'ksnm-common-ui' | 'local' => {
+  if (it.type === COMPONENT_TYPES.ANTD) return it.label === WRAPPER_LABEL ? 'antd-wrapped' : 'antd';
   if (it.type === COMPONENT_TYPES.KSNM) return 'ksnm-common-ui';
   return 'local';
 };

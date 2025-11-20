@@ -17,7 +17,7 @@ import { loadConfig as loadCfg, type ResolvedConfig } from '../utils/config';
 import type { ClassifiedReport } from '../classifiers/aggregate';
 import type { ClassifiedItem } from '../classifiers/deriveComponentType';
 
-const WRAPPER_LABEL = 'Обёртка над Ant Design';
+export const WRAPPER_LABEL = 'Обёртка над Ant Design';
 
 const resolveLocalComponent = async (
   cfg: ResolvedConfig,

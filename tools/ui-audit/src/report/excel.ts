@@ -12,7 +12,7 @@ export type DetailRow = {
   uiComponent: string;
   componentFile: string;
   label?: string;
-  sourceLib: 'antd' | 'ksnm-common-ui' | 'local';
+  sourceLib: 'antd' | 'antd-wrapped' | 'ksnm-common-ui' | 'local';
   type: string;
   usageIndex?: number;
 };
