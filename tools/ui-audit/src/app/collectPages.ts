@@ -21,7 +21,7 @@ export type PageInfo = {
   componentName?: string;
 };
 
-type AliasMap = Record<string, string> | undefined;
+type AliasMap = Record<string, string | string[]> | undefined;
 
 type ImportEntry = {
   local: string;
@@ -102,7 +102,7 @@ const getPropertyName = (key: t.Expression | t.PrivateName): string | null => {
   return null;
 };
 
-const isLazyCallee = (node: t.Expression): boolean => {
+const isLazyCallee = (node: t.Expression | t.Super | t.V8IntrinsicIdentifier): boolean => {
   if (t.isIdentifier(node)) return node.name === 'lazy';
   if (t.isMemberExpression(node) && t.isIdentifier(node.property)) {
     return node.property.name === 'lazy';
@@ -229,13 +229,10 @@ const analyzeModule = async (filePath: string, parser: ParserBabel): Promise<Mod
             const lazyImport = extractLazyImportPath(value);
             if (lazyImport) lazyComponents.set(d.id.name, { importPath: lazyImport });
           }
-        } else if (decl && t.isIdentifier(decl)) {
-          const existing = definitions.get(decl.name);
-          if (existing) exports.set(decl.name, existing);
         }
 
         for (const spec of p.node.specifiers) {
-          if (!t.isIdentifier(spec.local) && !t.isStringLiteral(spec.local)) continue;
+          if (!t.isExportSpecifier(spec)) continue;
           const local = t.isIdentifier(spec.local) ? spec.local.name : spec.local.value;
           const exported = t.isIdentifier(spec.exported) ? spec.exported.name : spec.exported.value;
 
@@ -335,6 +332,55 @@ const resolveExportedNode = async (
     try {
       const targetCtx = await loadModuleContext(targetPath, ctx.base);
       const resolved = await resolveExportedNode(targetCtx, imported, visited);
+      if (resolved) return resolved;
+    } finally {
+      visited.delete(key);
+    }
+  }
+
+  return null;
+};
+
+const resolveExportedFilePath = async (
+  ctx: ModuleContext,
+  exportName: string,
+  visited: Set<string>,
+): Promise<string | null> => {
+  if (exportName === 'default') {
+    if (ctx.defaultExport || ctx.exports.has('default')) return ctx.filePath;
+  } else if (ctx.exports.has(exportName)) {
+    return ctx.filePath;
+  }
+
+  for (const re of ctx.reExports) {
+    if (re.all) {
+      const targetPath = await resolveModuleFile(ctx, re.source);
+      if (!targetPath) continue;
+      const key = `${targetPath}::${exportName}`;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      try {
+        const targetCtx = await loadModuleContext(targetPath, ctx.base);
+        const resolved = await resolveExportedFilePath(targetCtx, exportName, visited);
+        if (resolved) return resolved;
+      } finally {
+        visited.delete(key);
+      }
+      continue;
+    }
+
+    const exportedName = re.exported ?? re.imported;
+    if (!exportedName) continue;
+    if (exportedName !== exportName) continue;
+    const imported = re.imported ?? exportName;
+    const targetPath = await resolveModuleFile(ctx, re.source);
+    if (!targetPath) continue;
+    const key = `${targetPath}::${imported}`;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    try {
+      const targetCtx = await loadModuleContext(targetPath, ctx.base);
+      const resolved = await resolveExportedFilePath(targetCtx, imported, visited);
       if (resolved) return resolved;
     } finally {
       visited.delete(key);
@@ -571,19 +617,25 @@ const resolveComponentTarget = async (
   shallowAlias: string | null;
 }> => {
   let spec: string | null = null;
+  let moduleFile: string | null = null;
 
   if (compId) {
     const importEntry = ctx.importMap.get(compId);
     if (importEntry) {
       spec = importEntry.source;
+      moduleFile = await resolveModuleFile(ctx, importEntry.source);
     } else {
       const lazyEntry = ctx.lazyComponents.get(compId);
-      if (lazyEntry?.importPath) spec = lazyEntry.importPath;
+      if (lazyEntry?.importPath) {
+        spec = lazyEntry.importPath;
+        moduleFile = await resolveModuleFile(ctx, lazyEntry.importPath);
+      }
     }
   }
 
   if (!spec && lazySpec) {
     spec = lazySpec;
+    moduleFile = await resolveModuleFile(ctx, lazySpec);
   }
 
   if (!spec) {
@@ -600,7 +652,17 @@ const resolveComponentTarget = async (
     ? await resolveAliasModuleDeep(ctx.base.cwd, ctx.base.aliases, spec)
     : null;
 
-  const targetRaw = deepRelative ?? deepAlias ?? shallowAlias ?? shallowRelative;
+  const exportBaseRaw = shallowAlias ?? shallowRelative ?? moduleFile ?? deepAlias ?? deepRelative;
+  const exportBase = toPosixOrNull(exportBaseRaw);
+
+  let targetRaw = deepRelative ?? deepAlias ?? shallowAlias ?? shallowRelative;
+
+  if (compId && exportBase) {
+    const moduleCtx = await loadModuleContext(exportBase, ctx.base);
+    const precise = await resolveExportedFilePath(moduleCtx, compId, new Set());
+    if (precise) targetRaw = precise;
+  }
+
   const target = toPosixOrNull(targetRaw);
 
   return {

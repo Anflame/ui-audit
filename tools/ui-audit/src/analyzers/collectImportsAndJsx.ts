@@ -1,11 +1,14 @@
 import traverse, { type NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 
+import { INTRINSIC_HTML, INTERACTIVE_HTML } from '../domain/constants';
+
 import type { FileScan, ImportInfo } from '../domain/model';
 
 export const collectImportsAndJsx = (astFile: t.File, file: string): FileScan => {
   const imports: ImportInfo[] = [];
   const jsxElements: string[] = [];
+  const interactiveIntrinsics = new Set<string>();
   const jsxFirstLabels = new Map<string, string>();
 
   traverse(astFile, {
@@ -56,6 +59,33 @@ export const collectImportsAndJsx = (astFile: t.File, file: string): FileScan =>
       if (!elName) return;
       jsxElements.push(elName);
 
+      const markInteractiveIntrinsic = (): void => {
+        if (!INTRINSIC_HTML.has(elName)) return;
+        if (INTERACTIVE_HTML.has(elName)) {
+          interactiveIntrinsics.add(elName);
+          return;
+        }
+
+        let hasRole = false;
+        let hasHandler = false;
+        for (const attr of p.node.attributes) {
+          if (!t.isJSXAttribute(attr) || !attr.name) continue;
+          const nm = t.isJSXIdentifier(attr.name) ? attr.name.name : '';
+          if (!nm) continue;
+          if (nm === 'role') {
+            hasRole = true;
+          }
+          if (nm.startsWith('on')) {
+            hasHandler = true;
+          }
+          if (hasRole || hasHandler) break;
+        }
+
+        if (hasRole || hasHandler) interactiveIntrinsics.add(elName);
+      };
+
+      markInteractiveIntrinsic();
+
       if (!jsxFirstLabels.has(elName)) {
         for (const attr of p.node.attributes) {
           if (!t.isJSXAttribute(attr) || !attr.name) continue;
@@ -79,5 +109,11 @@ export const collectImportsAndJsx = (astFile: t.File, file: string): FileScan =>
     },
   });
 
-  return { file, imports, jsxElements, labelMap: Object.fromEntries(jsxFirstLabels) };
+  return {
+    file,
+    imports,
+    jsxElements,
+    labelMap: Object.fromEntries(jsxFirstLabels),
+    interactiveIntrinsics: Array.from(interactiveIntrinsics),
+  };
 };

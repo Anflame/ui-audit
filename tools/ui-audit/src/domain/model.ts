@@ -4,7 +4,7 @@ export interface UiAuditConfig {
   projectName: string;
   routerFiles?: string[];
   srcRoots: string[];
-  aliases?: Record<string, string>;
+  aliases?: Record<string, string | string[]>;
   libraries: UiAuditLibraries;
   options?: Record<string, unknown>;
 }
@@ -20,4 +20,5 @@ export type FileScan = {
   imports: ImportInfo[];
   jsxElements: string[];
   labelMap?: Record<string, string>; // elementName -> first non-empty title/label literal
+  interactiveIntrinsics?: string[]; // интринсики, которые считаем интерактивными из-за роли/обработчиков
 };

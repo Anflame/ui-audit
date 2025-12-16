@@ -18,7 +18,12 @@ export type ClassifiedItem = {
 
 export const deriveComponentType = (file: string, usage: JsxUsage, cfg: UiAuditConfig): ClassifiedItem | null => {
   // 1) отсекаем неинтерактивные HTML-теги
-  if (!usage.import && INTRINSIC_HTML.has(usage.element) && !isInteractiveIntrinsic(usage.element)) {
+  if (
+    !usage.import &&
+    INTRINSIC_HTML.has(usage.element) &&
+    !isInteractiveIntrinsic(usage.element) &&
+    !usage.isInteractiveIntrinsic
+  ) {
     return null;
   }
 

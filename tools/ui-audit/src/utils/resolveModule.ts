@@ -124,30 +124,73 @@ export const resolveModuleDeep = async (fromFile: string, spec: string): Promise
 const normalizeAliasKey = (alias: string): string => alias.replace(/\/+$/, '');
 const normalizeAliasTarget = (target: string): string => target.replace(/\/+$/, '');
 
+const pickAliasTarget = (raw: string | string[]): string | null => {
+  if (Array.isArray(raw)) {
+    for (const candidate of raw) {
+      if (typeof candidate === 'string' && candidate.length > 0) return candidate;
+    }
+    return null;
+  }
+  return raw ?? null;
+};
+
+const matchAliasPattern = (alias: string, spec: string): { remainder: string } | null => {
+  if (!alias.includes('*')) {
+    if (spec === alias) return { remainder: '' };
+    if (spec.startsWith(`${alias}/`)) return { remainder: spec.slice(alias.length + 1) };
+    return null;
+  }
+
+  const [prefix, suffix] = alias.split('*');
+  if (!spec.startsWith(prefix)) return null;
+  if (suffix && !spec.endsWith(suffix)) return null;
+
+  const remainder = spec.slice(prefix.length, suffix ? spec.length - suffix.length : undefined);
+  return { remainder: remainder.replace(/^\/+/, '') };
+};
+
+const applyAliasTarget = (
+  cwd: string,
+  target: string,
+  remainder: string,
+): string => {
+  if (target.includes('*')) {
+    const resolvedTarget = target.replace('*', remainder);
+    return path.isAbsolute(resolvedTarget) ? resolvedTarget : path.resolve(cwd, resolvedTarget);
+  }
+
+  if (!remainder) {
+    return path.isAbsolute(target) ? target : path.resolve(cwd, target);
+  }
+
+  const baseDir = path.isAbsolute(target) ? target : path.resolve(cwd, target);
+  return path.join(baseDir, remainder);
+};
+
 const computeAliasBase = (
   cwd: string,
-  aliases: Record<string, string> | undefined,
+  aliases: Record<string, string | string[]> | undefined,
   spec: string,
 ): string | null => {
   if (!aliases) return null;
   for (const [rawAlias, rawTarget] of Object.entries(aliases)) {
     const alias = normalizeAliasKey(rawAlias);
-    const target = normalizeAliasTarget(rawTarget);
+    const picked = pickAliasTarget(rawTarget);
+    if (!picked) continue;
+    const target = normalizeAliasTarget(picked);
 
     if (!alias) continue;
-    if (spec !== alias && !spec.startsWith(`${alias}/`)) continue;
+    const match = matchAliasPattern(alias, spec);
+    if (!match) continue;
 
-    const remainder = spec === alias ? '' : spec.slice(alias.length);
-    const relative = remainder.replace(/^\/+/, '');
-    const baseDir = path.isAbsolute(target) ? target : path.resolve(cwd, target);
-    return path.join(baseDir, relative);
+    return applyAliasTarget(cwd, target, match.remainder);
   }
   return null;
 };
 
 export const resolveAliasImportPath = async (
   cwd: string,
-  aliases: Record<string, string> | undefined,
+  aliases: Record<string, string | string[]> | undefined,
   spec: string,
 ): Promise<string | null> => {
   const base = computeAliasBase(cwd, aliases, spec);
@@ -157,7 +200,7 @@ export const resolveAliasImportPath = async (
 
 export const resolveAliasModuleDeep = async (
   cwd: string,
-  aliases: Record<string, string> | undefined,
+  aliases: Record<string, string | string[]> | undefined,
   spec: string,
 ): Promise<string | null> => {
   const base = computeAliasBase(cwd, aliases, spec);

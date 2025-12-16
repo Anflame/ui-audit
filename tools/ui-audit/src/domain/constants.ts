@@ -1,6 +1,5 @@
 export const COMPONENT_TYPES = {
   ANTD: 'Ант Дизайн',
-  ANTD_WRAPPER: 'Обёртка над Ант Дизайном',
   KSNM: 'KSNM UI',
   LOCAL: 'Локальные/нативные',
 } as const;

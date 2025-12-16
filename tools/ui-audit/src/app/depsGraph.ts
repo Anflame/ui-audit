@@ -9,7 +9,7 @@ export type Deps = { parentsOf: Map<string, Set<string>>; childrenOf: Map<string
 export const buildReverseDeps = async (
   cwd: string,
   scans: FileScan[],
-  aliases: Record<string, string> | undefined,
+  aliases: Record<string, string | string[]> | undefined,
 ): Promise<Deps> => {
   const parentsOf = new Map<string, Set<string>>();
   const childrenOf = new Map<string, Set<string>>();
@@ -39,21 +39,37 @@ export const buildReverseDeps = async (
   return { parentsOf, childrenOf };
 };
 
-export const findOwningPage = (file: string, pages: Record<string, PageInfo>, deps: Deps): PageInfo | undefined => {
+export const findOwningPages = (
+  file: string,
+  pages: Record<string, PageInfo>,
+  deps: Deps,
+): PageInfo[] => {
   const start = toPosixPath(file);
   const visited = new Set<string>();
   const q: string[] = [start];
+  const owners: PageInfo[] = [];
+  const seenPages = new Set<string>();
 
   while (q.length) {
     const cur = q.shift()!;
     if (visited.has(cur)) continue;
     visited.add(cur);
 
-    if (pages[cur]) return pages[cur];
+    const page = pages[cur];
+    if (page) {
+      if (!seenPages.has(page.pageFilePath)) {
+        owners.push(page);
+        seenPages.add(page.pageFilePath);
+      }
+      // Даже если нашли страницу, продолжаем смотреть родителей, чтобы собрать все маршруты
+    }
 
     const parents = deps.parentsOf.get(cur);
     if (parents) for (const p of parents) q.push(p);
   }
 
-  return undefined;
+  return owners;
 };
+
+export const findOwningPage = (file: string, pages: Record<string, PageInfo>, deps: Deps): PageInfo | undefined =>
+  findOwningPages(file, pages, deps)[0];
